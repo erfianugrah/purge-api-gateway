@@ -187,6 +187,37 @@ describe("Admin endpoints", () => {
 		expect(res.status).toBe(404);
 	});
 
+	it("get key with wrong zone_id returns 404", async () => {
+		const keyId = await createKey([
+			{ scope_type: "host", scope_value: "example.com" },
+		]);
+		const res = await SELF.fetch(
+			`http://localhost/admin/keys/${keyId}?zone_id=bbbb2222cccc3333dddd4444eeee5555`,
+			{ headers: adminHeaders() },
+		);
+		expect(res.status).toBe(404);
+	});
+
+	it("revoke key with wrong zone_id returns 404", async () => {
+		const keyId = await createKey([
+			{ scope_type: "host", scope_value: "example.com" },
+		]);
+		const res = await SELF.fetch(
+			`http://localhost/admin/keys/${keyId}?zone_id=bbbb2222cccc3333dddd4444eeee5555`,
+			{ method: "DELETE", headers: adminHeaders() },
+		);
+		expect(res.status).toBe(404);
+
+		// Verify the key was NOT revoked — still accessible with correct zone
+		const getRes = await SELF.fetch(
+			`http://localhost/admin/keys/${keyId}?zone_id=${ZONE_ID}`,
+			{ headers: adminHeaders() },
+		);
+		expect(getRes.status).toBe(200);
+		const data = await getRes.json<any>();
+		expect(data.result.key.revoked).toBe(0);
+	});
+
 	it("list keys requires zone_id", async () => {
 		const res = await SELF.fetch("http://localhost/admin/keys", {
 			headers: adminHeaders(),

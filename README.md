@@ -45,11 +45,30 @@ Routing is Hono. Logging is one fat JSON object per request via `console.log`, p
 
 ## Setup
 
-Requires Node.js >= 18 and a Cloudflare API token with Cache Purge permission.
+Requires Node.js >= 18, a Cloudflare account, and an API token with Cache Purge permission.
 
 ```bash
+git clone https://github.com/erfianugrah/purge-api-gateway.git
+cd purge-api-gateway
 npm install
 ```
+
+### Configure `wrangler.jsonc`
+
+Before deploying, update these to match your account:
+
+1. **Custom domain** — change `purge.erfi.io` to your own domain (or remove the `routes` block entirely to use the default `*.workers.dev` subdomain):
+   ```jsonc
+   "routes": [{ "pattern": "purge.yourdomain.com", "custom_domain": true }]
+   ```
+
+2. **D1 database** — create one and update the binding:
+   ```bash
+   npx wrangler d1 create purge-analytics
+   # copy the database_id from the output into wrangler.jsonc
+   ```
+
+3. **Rate limit vars** — defaults match Enterprise tier. Adjust if you're on a different plan (see [Configuration](#configuration)).
 
 ### Secrets
 
@@ -74,6 +93,8 @@ npx wrangler dev       # local dev server
 npx wrangler deploy    # push to Cloudflare
 npx wrangler types     # regenerate types after changing bindings
 ```
+
+On first deploy, wrangler automatically creates the Durable Object namespace and runs the SQLite migration defined in `wrangler.jsonc`. No manual migration step needed.
 
 ---
 

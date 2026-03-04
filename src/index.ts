@@ -518,7 +518,7 @@ app.post("/v1/zones/:zoneId/purge_cache", async (c) => {
 			cost: parsed.cost,
 			status: result.status,
 			collapsed: collapseLevel,
-			upstream_status: result.reachedUpstream ? result.status : null,
+			upstream_status: !collapseLevel && result.reachedUpstream ? result.status : null,
 			duration_ms: Date.now() - start,
 			created_at: Date.now(),
 		};
@@ -721,7 +721,7 @@ admin.get("/keys/:id", async (c) => {
 	const stub = getStub(c.env);
 	const result = await stub.getKey(keyId);
 
-	if (!result) {
+	if (!result || result.key.zone_id !== zoneId) {
 		return c.json(
 			{ success: false, errors: [{ code: 404, message: "Key not found" }] },
 			404,
@@ -744,6 +744,16 @@ admin.delete("/keys/:id", async (c) => {
 
 	const keyId = c.req.param("id");
 	const stub = getStub(c.env);
+
+	// Verify key belongs to the specified zone before revoking
+	const existing = await stub.getKey(keyId);
+	if (!existing || existing.key.zone_id !== zoneId) {
+		return c.json(
+			{ success: false, errors: [{ code: 404, message: "Key not found or already revoked" }] },
+			404,
+		);
+	}
+
 	const revoked = await stub.revokeKey(keyId);
 
 	const log: Record<string, unknown> = {

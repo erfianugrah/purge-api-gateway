@@ -465,29 +465,18 @@ describe("IAM — expired key", () => {
 	it("expired key → rejected", async () => {
 		const stub = getStub();
 
-		// Create a key that expires "in -1 days" (already expired).
-		// expires_in_days isn't directly negative, so we'll create and manually
-		// test by checking the authorize method. We use a very small expiry.
-		// Actually: expires_in_days rounds to now + days * 86400000.
-		// If we set expires_in_days to 0 it should be null. Let's just use
-		// a fractional value that gives us an expiry in the past relative
-		// to when authorize runs.
-		// Better approach: create key, then call authorize after a sufficient time.
-		// In the pool-workers runtime, we can't easily fake time.
-		// Let's instead use a trick: set expires_in_days to a tiny fraction
-		// so expires_at is Date.now() + ~1ms, then await a small delay.
-
-		// Actually the simplest approach: set expires_in_days to something tiny
-		// like 0.000001 (= ~86ms). Then wait 100ms before authorizing.
+		// Use a tiny fractional expires_in_days so the key expires almost immediately.
+		// 0.000002 days ≈ 173ms — generous enough to survive DO init latency.
+		// Then wait 250ms to ensure we're well past expiry.
 		const { key } = await stub.createKey({
 			name: "soon-expired",
 			zone_id: ZONE_ID,
-			expires_in_days: 0.0000001, // ~8.6ms
+			expires_in_days: 0.000002, // ~173ms
 			scopes: [{ scope_type: "host", scope_value: "example.com" }],
 		});
 
-		// Wait for expiry
-		await new Promise((r) => setTimeout(r, 50));
+		// Wait well past expiry
+		await new Promise((r) => setTimeout(r, 250));
 
 		const result = await stub.authorize(key.id, ZONE_ID, {
 			hosts: ["example.com"],

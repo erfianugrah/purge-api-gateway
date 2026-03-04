@@ -47,9 +47,11 @@ export async function request(
 	},
 ): Promise<{ status: number; headers: Headers; data: unknown; durationMs: number }> {
 	const url = `${config.baseUrl}${path}`;
-	const headers: Record<string, string> = {
-		"Content-Type": "application/json",
-	};
+	const headers: Record<string, string> = {};
+
+	if (opts?.body) {
+		headers["Content-Type"] = "application/json";
+	}
 
 	if (opts?.auth === "admin") {
 		if (!config.adminKey) {
