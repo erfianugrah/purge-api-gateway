@@ -4,6 +4,7 @@ import { adminApp } from './routes/admin';
 import { s3App } from './s3/routes';
 import { deleteOldEvents } from './analytics';
 import { deleteOldS3Events } from './s3/analytics';
+import { getStub } from './do-stub';
 import type { HonoEnv } from './types';
 
 // Re-export DO class — wrangler requires it from the main entrypoint
@@ -26,10 +27,13 @@ app.route('/s3', s3App);
 export default {
 	fetch: app.fetch,
 
-	/** Cron-triggered retention job — deletes analytics events older than RETENTION_DAYS. */
+	/** Cron-triggered retention job — deletes analytics events older than retention_days config. */
 	async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) {
-		const retentionDays = Number(env.RETENTION_DAYS) || 30;
 		try {
+			const stub = getStub(env);
+			const gwConfig = await stub.getConfig();
+			const retentionDays = gwConfig.retention_days;
+
 			const [purgeDeleted, s3Deleted] = await Promise.all([
 				deleteOldEvents(env.ANALYTICS_DB, retentionDays),
 				deleteOldS3Events(env.ANALYTICS_DB, retentionDays),

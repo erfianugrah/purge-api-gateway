@@ -4,28 +4,13 @@ import { IamManager } from './iam';
 import { S3CredentialManager } from './s3/iam';
 import { UpstreamTokenManager } from './upstream-tokens';
 import { UpstreamR2Manager } from './s3/upstream-r2';
-import type { PurgeBody, ConsumeResult, RateLimitConfig, CreateKeyRequest, AuthResult, ApiKey, PurgeResult } from './types';
+import { ConfigManager } from './config-registry';
+import type { PurgeBody, ConsumeResult, CreateKeyRequest, AuthResult, ApiKey, PurgeResult } from './types';
 import type { S3Credential, CreateS3CredentialRequest } from './s3/types';
 import type { UpstreamToken, CreateUpstreamTokenRequest } from './upstream-tokens';
 import type { UpstreamR2, CreateUpstreamR2Request, R2Credentials } from './s3/upstream-r2';
+import type { GatewayConfig, ConfigOverride } from './config-registry';
 import type { RequestContext } from './policy-types';
-
-// ─── Config ─────────────────────────────────────────────────────────────────
-
-export function parseConfig(env: Env): RateLimitConfig {
-	return {
-		bulk: {
-			rate: Number(env.BULK_RATE) || 50,
-			bucketSize: Number(env.BULK_BUCKET_SIZE) || 500,
-			maxOps: Number(env.BULK_MAX_OPS) || 100,
-		},
-		single: {
-			rate: Number(env.SINGLE_RATE) || 3000,
-			bucketSize: Number(env.SINGLE_BUCKET_SIZE) || 6000,
-			maxOps: Number(env.SINGLE_MAX_OPS) || 500,
-		},
-	};
-}
 
 // ─── Rate-limit 429 builder ─────────────────────────────────────────────────
 
@@ -65,6 +50,7 @@ export class Gatekeeper extends DurableObject<Env> {
 	private s3Iam!: S3CredentialManager;
 	private upstreamTokens!: UpstreamTokenManager;
 	private upstreamR2!: UpstreamR2Manager;
+	private configManager!: ConfigManager;
 
 	/** Per-key rate limit buckets. Lazily created when a key with custom limits is first used. */
 	private keyBuckets = new Map<string, { bulk: TokenBucket; single: TokenBucket }>();
@@ -76,12 +62,17 @@ export class Gatekeeper extends DurableObject<Env> {
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
 
-		const config = parseConfig(env);
-		this.bulkBucket = new TokenBucket(config.bulk.rate, config.bulk.bucketSize);
-		this.singleBucket = new TokenBucket(config.single.rate, config.single.bucketSize);
-
 		ctx.blockConcurrencyWhile(async () => {
-			const cacheTtl = Number(env.KEY_CACHE_TTL_MS) || 60_000;
+			this.configManager = new ConfigManager(ctx.storage.sql);
+			this.configManager.initTable();
+
+			const gwConfig = this.configManager.getConfig(env);
+			const rlConfig = ConfigManager.toRateLimitConfig(gwConfig);
+
+			this.bulkBucket = new TokenBucket(rlConfig.bulk.rate, rlConfig.bulk.bucketSize);
+			this.singleBucket = new TokenBucket(rlConfig.single.rate, rlConfig.single.bucketSize);
+
+			const cacheTtl = gwConfig.key_cache_ttl_ms;
 
 			this.iam = new IamManager(ctx.storage.sql, cacheTtl);
 			this.iam.initTables();
@@ -95,6 +86,16 @@ export class Gatekeeper extends DurableObject<Env> {
 			this.upstreamR2 = new UpstreamR2Manager(ctx.storage.sql, cacheTtl);
 			this.upstreamR2.initTables();
 		});
+	}
+
+	/** Rebuild token buckets from the current config. Called after config changes. */
+	private rebuildBuckets(): void {
+		const gwConfig = this.configManager.getConfig(this.env);
+		const rlConfig = ConfigManager.toRateLimitConfig(gwConfig);
+		this.bulkBucket = new TokenBucket(rlConfig.bulk.rate, rlConfig.bulk.bucketSize);
+		this.singleBucket = new TokenBucket(rlConfig.single.rate, rlConfig.single.bucketSize);
+		// Clear per-key buckets so they pick up new account defaults
+		this.keyBuckets.clear();
 	}
 
 	// ─── Purge with DO-level collapsing ─────────────────────────────────
@@ -405,5 +406,32 @@ export class Gatekeeper extends DurableObject<Env> {
 	/** Resolve R2 credentials for ListBuckets (no specific bucket). */
 	async resolveR2ForListBuckets(): Promise<R2Credentials | null> {
 		return this.upstreamR2.resolveForListBuckets();
+	}
+
+	// ─── Config Registry RPC methods ────────────────────────────────────
+
+	/** Get the full resolved config. */
+	async getConfig(): Promise<GatewayConfig> {
+		return this.configManager.getConfig(this.env);
+	}
+
+	/** Set one or more config values and rebuild token buckets. */
+	async setConfig(updates: Record<string, number>, updatedBy?: string): Promise<void> {
+		this.configManager.setConfig(updates, updatedBy);
+		this.rebuildBuckets();
+	}
+
+	/** Reset a config key to env/default and rebuild token buckets. */
+	async resetConfigKey(key: string): Promise<boolean> {
+		const deleted = this.configManager.resetKey(key);
+		if (deleted) {
+			this.rebuildBuckets();
+		}
+		return deleted;
+	}
+
+	/** List all config overrides stored in the registry. */
+	async listConfigOverrides(): Promise<ConfigOverride[]> {
+		return this.configManager.listOverrides();
 	}
 }

@@ -3,58 +3,44 @@
 	"name": "gatekeeper",
 	"main": "src/index.ts",
 	"compatibility_date": "2026-03-01",
-	"compatibility_flags": [
-		"nodejs_compat"
-	],
+	"compatibility_flags": ["nodejs_compat"],
 	"observability": {
-		"enabled": true
+		"enabled": true,
 	},
 	"durable_objects": {
 		"bindings": [
 			{
 				"class_name": "Gatekeeper",
-				"name": "GATEKEEPER"
-			}
-		]
+				"name": "GATEKEEPER",
+			},
+		],
 	},
 	"migrations": [
 		{
-			"new_sqlite_classes": [
-				"Gatekeeper"
-			],
-			"tag": "v1"
-		}
+			"new_sqlite_classes": ["Gatekeeper"],
+			"tag": "v1",
+		},
 	],
 	"routes": [
 		{
 			"pattern": "gate.erfi.io",
-			"custom_domain": true
-		}
+			"custom_domain": true,
+		},
 	],
 	"d1_databases": [
 		{
 			"binding": "ANALYTICS_DB",
-			"database_name": "analytics",
-			"database_id": "bcb89d81-b5cc-458f-bd70-bd1c3577da8b"
-		}
+			"database_name": "gatekeeper-analytics",
+			"database_id": "d93c759e-f250-4dce-8f87-da02cb4b7b4e",
+		},
 	],
 	"assets": {
 		"directory": "./dashboard/dist/",
 		"binding": "ASSETS",
 		"not_found_handling": "single-page-application",
-		"run_worker_first": ["/v1/*", "/admin/*", "/health", "/s3", "/s3/*"]
+		"run_worker_first": ["/v1/*", "/admin/*", "/health", "/s3", "/s3/*"],
 	},
 	"triggers": {
-		"crons": ["0 3 * * *"]
+		"crons": ["0 3 * * *"],
 	},
-	"vars": {
-		"BULK_RATE": "50",
-		"BULK_BUCKET_SIZE": "500",
-		"BULK_MAX_OPS": "100",
-		"SINGLE_RATE": "3000",
-		"SINGLE_BUCKET_SIZE": "6000",
-		"SINGLE_MAX_OPS": "500",
-		"KEY_CACHE_TTL_MS": "60000",
-		"RETENTION_DAYS": "30"
-	}
 }

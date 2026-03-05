@@ -69,10 +69,15 @@ purgeRoute.post('/v1/zones/:zoneId/purge_cache', async (c) => {
 		return c.json({ success: false, errors: [{ code: 400, message: 'Invalid JSON body' }] }, 400);
 	}
 
+	const stub = getStub(env);
+
+	// Resolve config from DO registry for max-ops limits
+	const gwConfig = await stub.getConfig();
+
 	// Classify purge type
 	let parsed: ParsedPurgeRequest;
 	try {
-		parsed = classifyPurge(body, env);
+		parsed = classifyPurge(body, { singleMaxOps: gwConfig.single_max_ops, bulkMaxOps: gwConfig.bulk_max_ops });
 	} catch (e: any) {
 		log.status = 400;
 		log.error = 'invalid_purge_body';
@@ -84,8 +89,6 @@ purgeRoute.post('/v1/zones/:zoneId/purge_cache', async (c) => {
 
 	log.purgeType = parsed.type;
 	log.cost = parsed.cost;
-
-	const stub = getStub(env);
 
 	// Resolve upstream CF API token for this zone
 	const upstreamToken = await stub.resolveUpstreamToken(zoneId);
@@ -200,9 +203,8 @@ function createAndTrackFlight(
 }
 
 /** Classify a purge request body into type (single/bulk) and cost. */
-export function classifyPurge(body: PurgeBody, env: Env): ParsedPurgeRequest {
-	const singleMaxOps = Number(env.SINGLE_MAX_OPS) || 500;
-	const bulkMaxOps = Number(env.BULK_MAX_OPS) || 100;
+export function classifyPurge(body: PurgeBody, limits: { singleMaxOps: number; bulkMaxOps: number }): ParsedPurgeRequest {
+	const { singleMaxOps, bulkMaxOps } = limits;
 
 	if (body.files && body.files.length > 0) {
 		if (body.files.length > singleMaxOps) {

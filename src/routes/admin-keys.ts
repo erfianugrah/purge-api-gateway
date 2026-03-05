@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 import { validatePolicy } from '../policy-engine';
-import { parseConfig } from '../durable-object';
 import { getStub } from '../do-stub';
 import type { CreateKeyRequest, HonoEnv } from '../types';
+import type { GatewayConfig } from '../config-registry';
 import type { PolicyDocument } from '../policy-types';
 
 // ─── Admin: Purge Key Management ────────────────────────────────────────────
@@ -65,9 +65,12 @@ adminKeysApp.post('/', async (c) => {
 		);
 	}
 
+	const stub = getStub(c.env);
+
 	const rateLimit = raw.rate_limit as CreateKeyRequest['rate_limit'] | undefined;
 	if (rateLimit) {
-		const rateLimitError = validateRateLimits(rateLimit, c.env);
+		const gwConfig = await stub.getConfig();
+		const rateLimitError = validateRateLimits(rateLimit, gwConfig);
 		if (rateLimitError) {
 			log.status = 400;
 			log.error = 'rate_limit_exceeds_account';
@@ -89,8 +92,6 @@ adminKeysApp.post('/', async (c) => {
 	log.zoneId = req.zone_id ?? 'none';
 	log.keyName = req.name;
 	log.statementCount = req.policy.statements.length;
-
-	const stub = getStub(c.env);
 	const result = await stub.createKey(req);
 
 	log.status = 200;
@@ -173,20 +174,19 @@ adminKeysApp.delete('/:id', async (c) => {
 // ─── Private helpers ────────────────────────────────────────────────────────
 
 /** Validate per-key rate limits against account defaults. Returns error string or null. */
-function validateRateLimits(rl: NonNullable<CreateKeyRequest['rate_limit']>, env: Env): string | null {
-	const config = parseConfig(env);
+function validateRateLimits(rl: NonNullable<CreateKeyRequest['rate_limit']>, config: GatewayConfig): string | null {
 	const errors: string[] = [];
-	if (rl.bulk_rate != null && rl.bulk_rate > config.bulk.rate) {
-		errors.push(`bulk_rate ${rl.bulk_rate} exceeds account default ${config.bulk.rate}`);
+	if (rl.bulk_rate != null && rl.bulk_rate > config.bulk_rate) {
+		errors.push(`bulk_rate ${rl.bulk_rate} exceeds account default ${config.bulk_rate}`);
 	}
-	if (rl.bulk_bucket != null && rl.bulk_bucket > config.bulk.bucketSize) {
-		errors.push(`bulk_bucket ${rl.bulk_bucket} exceeds account default ${config.bulk.bucketSize}`);
+	if (rl.bulk_bucket != null && rl.bulk_bucket > config.bulk_bucket_size) {
+		errors.push(`bulk_bucket ${rl.bulk_bucket} exceeds account default ${config.bulk_bucket_size}`);
 	}
-	if (rl.single_rate != null && rl.single_rate > config.single.rate) {
-		errors.push(`single_rate ${rl.single_rate} exceeds account default ${config.single.rate}`);
+	if (rl.single_rate != null && rl.single_rate > config.single_rate) {
+		errors.push(`single_rate ${rl.single_rate} exceeds account default ${config.single_rate}`);
 	}
-	if (rl.single_bucket != null && rl.single_bucket > config.single.bucketSize) {
-		errors.push(`single_bucket ${rl.single_bucket} exceeds account default ${config.single.bucketSize}`);
+	if (rl.single_bucket != null && rl.single_bucket > config.single_bucket_size) {
+		errors.push(`single_bucket ${rl.single_bucket} exceeds account default ${config.single_bucket_size}`);
 	}
 	if (errors.length > 0) {
 		return `Per-key rate limits must not exceed account defaults: ${errors.join('; ')}`;
