@@ -12,15 +12,15 @@
 	"durable_objects": {
 		"bindings": [
 			{
-				"class_name": "PurgeRateLimiter",
-				"name": "PURGE_RATE_LIMITER"
+				"class_name": "Gatekeeper",
+				"name": "GATEKEEPER"
 			}
 		]
 	},
 	"migrations": [
 		{
 			"new_sqlite_classes": [
-				"PurgeRateLimiter"
+				"Gatekeeper"
 			],
 			"tag": "v1"
 		}
@@ -34,8 +34,8 @@
 	"d1_databases": [
 		{
 			"binding": "ANALYTICS_DB",
-			"database_name": "purge-analytics",
-			"database_id": "e27c1085-f743-46fa-9308-0c5a686dbec6"
+			"database_name": "analytics",
+			"database_id": "bcb89d81-b5cc-458f-bd70-bd1c3577da8b"
 		}
 	],
 	"assets": {

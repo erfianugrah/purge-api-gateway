@@ -5,11 +5,7 @@ import { adminHeaders } from './helpers';
 
 // --- Helpers ---
 
-async function createS3Credential(
-	policy: Record<string, unknown>,
-	name = 'test-s3-cred',
-	extra?: Record<string, unknown>,
-) {
+async function createS3Credential(policy: Record<string, unknown>, name = 'test-s3-cred', extra?: Record<string, unknown>) {
 	const res = await SELF.fetch('http://localhost/admin/s3/credentials', {
 		method: 'POST',
 		headers: adminHeaders(),

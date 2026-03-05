@@ -37,17 +37,11 @@ describe('S3 Sig V4 — parseAuthHeader', () => {
 	});
 
 	it('rejects missing Signature', () => {
-		expect(
-			parseAuthHeader('AWS4-HMAC-SHA256 Credential=KEY/20260305/auto/s3/aws4_request, SignedHeaders=host'),
-		).toBeNull();
+		expect(parseAuthHeader('AWS4-HMAC-SHA256 Credential=KEY/20260305/auto/s3/aws4_request, SignedHeaders=host')).toBeNull();
 	});
 
 	it('rejects non-aws4_request type', () => {
-		expect(
-			parseAuthHeader(
-				'AWS4-HMAC-SHA256 Credential=KEY/20260305/auto/s3/other_request, SignedHeaders=host, Signature=aa',
-			),
-		).toBeNull();
+		expect(parseAuthHeader('AWS4-HMAC-SHA256 Credential=KEY/20260305/auto/s3/other_request, SignedHeaders=host, Signature=aa')).toBeNull();
 	});
 });
 

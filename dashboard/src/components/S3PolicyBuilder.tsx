@@ -1,9 +1,18 @@
 import { useState, useCallback } from "react";
-import { Plus, Trash2, ChevronDown, ChevronRight, Eye, EyeOff } from "lucide-react";
+import { Plus, Trash2, ChevronDown, ChevronRight, Eye, EyeOff, Upload, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+	DialogTrigger,
+} from "@/components/ui/dialog";
 import {
 	Select,
 	SelectContent,
@@ -330,6 +339,297 @@ function StatementEditor({ index, statement, onChange, onRemove, canRemove }: St
 				</>
 			)}
 		</div>
+	);
+}
+
+// ─── AWS IAM Policy Converter ───────────────────────────────────────
+
+interface AwsStatement {
+	Sid?: string;
+	Effect: string;
+	Action: string | string[];
+	Resource: string | string[];
+	Condition?: Record<string, Record<string, string>>;
+}
+
+interface AwsPolicy {
+	Version?: string;
+	Statement: AwsStatement[];
+}
+
+interface ConvertResult {
+	policy: PolicyDocument;
+	warnings: string[];
+	skipped: string[];
+}
+
+/** Convert an AWS IAM policy JSON to our Gatekeeper format. */
+function convertAwsPolicy(aws: AwsPolicy): ConvertResult {
+	const warnings: string[] = [];
+	const skipped: string[] = [];
+	const statements: Statement[] = [];
+
+	for (const stmt of aws.Statement) {
+		const actions = Array.isArray(stmt.Action) ? stmt.Action : [stmt.Action];
+		const resources = Array.isArray(stmt.Resource) ? stmt.Resource : [stmt.Resource];
+
+		// Only process Allow + S3 actions
+		if (stmt.Effect !== "Allow") {
+			skipped.push(`${stmt.Sid ?? "Statement"}: Deny statements not supported (only Allow)`);
+			continue;
+		}
+
+		const s3Actions = actions.filter((a) => a.startsWith("s3:"));
+		const nonS3Actions = actions.filter((a) => !a.startsWith("s3:"));
+
+		if (s3Actions.length === 0) {
+			skipped.push(
+				`${stmt.Sid ?? "Statement"}: No S3 actions (${nonS3Actions.slice(0, 3).join(", ")}${nonS3Actions.length > 3 ? "..." : ""})`,
+			);
+			continue;
+		}
+
+		if (nonS3Actions.length > 0) {
+			warnings.push(
+				`${stmt.Sid ?? "Statement"}: Dropped non-S3 actions: ${nonS3Actions.join(", ")}`,
+			);
+		}
+
+		// Convert ARN resources to our format
+		const converted = convertResources(resources, warnings, stmt.Sid);
+
+		if (converted.length === 0) {
+			// Wildcard resource
+			statements.push({
+				effect: "allow",
+				actions: s3Actions,
+				resources: ["*"],
+			});
+		} else {
+			statements.push({
+				effect: "allow",
+				actions: s3Actions,
+				resources: converted,
+			});
+		}
+
+		// Handle AWS Conditions (best-effort)
+		if (stmt.Condition) {
+			warnings.push(
+				`${stmt.Sid ?? "Statement"}: AWS Conditions dropped — translate manually if needed`,
+			);
+		}
+	}
+
+	if (statements.length === 0) {
+		statements.push({
+			effect: "allow",
+			actions: ["s3:GetObject"],
+			resources: ["*"],
+		});
+		warnings.push("No S3 statements found — added a placeholder");
+	}
+
+	return {
+		policy: { version: "2025-01-01", statements },
+		warnings,
+		skipped,
+	};
+}
+
+/**
+ * Convert AWS ARN resources to Gatekeeper format.
+ *
+ * ARN format: arn:aws:s3:::bucket-name or arn:aws:s3:::bucket-name/key*
+ * Our format: bucket:name or object:name/*
+ *
+ * Handles wildcards in bucket names by converting to conditions.
+ */
+function convertResources(resources: string[], warnings: string[], sid?: string): string[] {
+	const result: string[] = [];
+
+	for (const resource of resources) {
+		if (resource === "*") {
+			return []; // Signals wildcard — caller uses ["*"]
+		}
+
+		// Strip ARN prefix
+		const arnMatch = resource.match(/^arn:aws:s3:::(.+)$/);
+		if (!arnMatch) {
+			warnings.push(`${sid ?? "Statement"}: Unrecognized resource format: ${resource}`);
+			continue;
+		}
+
+		const path = arnMatch[1];
+
+		// Check if it has a / (object-level) or not (bucket-level)
+		const slashIndex = path.indexOf("/");
+		if (slashIndex === -1) {
+			// Bucket-level: arn:aws:s3:::my-bucket or arn:aws:s3:::my-bucket*
+			const bucketName = path.replace(/\*+$/, ""); // Strip trailing wildcards
+			if (path.includes("*") || path.includes("?")) {
+				// Wildcard bucket name — convert to wildcard resource
+				result.push(`bucket:${path}`);
+				result.push(`object:${path}/*`);
+				warnings.push(
+					`${sid ?? "Statement"}: Wildcard bucket "${path}" — use conditions for finer control`,
+				);
+			} else {
+				result.push(`bucket:${bucketName}`);
+			}
+		} else {
+			// Object-level: arn:aws:s3:::my-bucket/prefix/*
+			const bucket = path.slice(0, slashIndex);
+			const keyPattern = path.slice(slashIndex + 1);
+
+			if (bucket.includes("*") || bucket.includes("?")) {
+				// Wildcard bucket in object resource
+				result.push(`object:${bucket}/${keyPattern}`);
+				warnings.push(
+					`${sid ?? "Statement"}: Wildcard bucket in object resource "${path}" — verify manually`,
+				);
+			} else {
+				result.push(`object:${bucket}/${keyPattern}`);
+			}
+		}
+	}
+
+	return result;
+}
+
+// ─── Import Dialog ──────────────────────────────────────────────────
+
+interface ImportDialogProps {
+	onImport: (policy: PolicyDocument) => void;
+}
+
+function ImportAwsDialog({ onImport }: ImportDialogProps) {
+	const [open, setOpen] = useState(false);
+	const [input, setInput] = useState("");
+	const [result, setResult] = useState<ConvertResult | null>(null);
+	const [error, setError] = useState<string | null>(null);
+
+	const handleParse = () => {
+		setError(null);
+		setResult(null);
+		try {
+			const parsed = JSON.parse(input.trim());
+			if (!parsed.Statement || !Array.isArray(parsed.Statement)) {
+				setError("Invalid AWS IAM policy: missing Statement array");
+				return;
+			}
+			const converted = convertAwsPolicy(parsed);
+			setResult(converted);
+		} catch {
+			setError("Invalid JSON — paste a valid AWS IAM policy document");
+		}
+	};
+
+	const handleImport = () => {
+		if (result) {
+			onImport(result.policy);
+			setOpen(false);
+			setInput("");
+			setResult(null);
+			setError(null);
+		}
+	};
+
+	return (
+		<Dialog open={open} onOpenChange={setOpen}>
+			<DialogTrigger asChild>
+				<Button type="button" variant="outline" size="sm" className="text-xs">
+					<Upload className="h-3 w-3 mr-1" />
+					Import from AWS
+				</Button>
+			</DialogTrigger>
+			<DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+				<DialogHeader>
+					<DialogTitle>Import AWS IAM Policy</DialogTitle>
+					<DialogDescription>
+						Paste an AWS IAM policy JSON. S3 statements will be converted to Gatekeeper format.
+						Non-S3 actions (IAM, STS, Kinesis, etc.) will be skipped.
+					</DialogDescription>
+				</DialogHeader>
+
+				<div className="space-y-4">
+					<textarea
+						className="w-full h-48 rounded-md border border-border bg-background p-3 text-xs font-data resize-y focus:outline-none focus:ring-1 focus:ring-ring"
+						placeholder='{"Version": "2012-10-17", "Statement": [...]}'
+						value={input}
+						onChange={(e) => {
+							setInput(e.target.value);
+							setResult(null);
+							setError(null);
+						}}
+					/>
+
+					{error && (
+						<div className="rounded-md border border-lv-red/30 bg-lv-red/10 p-3 text-xs text-lv-red">
+							{error}
+						</div>
+					)}
+
+					{result && (
+						<div className="space-y-3">
+							{/* Converted statements summary */}
+							<div className="rounded-md border border-lv-green/30 bg-lv-green/10 p-3">
+								<p className="text-xs font-medium text-lv-green">
+									Converted {result.policy.statements.length} statement{result.policy.statements.length !== 1 ? "s" : ""}
+								</p>
+							</div>
+
+							{/* Warnings */}
+							{result.warnings.length > 0 && (
+								<div className="rounded-md border border-lv-yellow/30 bg-lv-yellow/10 p-3 space-y-1">
+									<div className="flex items-center gap-1.5 text-xs font-medium text-lv-yellow">
+										<AlertTriangle className="h-3 w-3" />
+										Warnings
+									</div>
+									{result.warnings.map((w, i) => (
+										<p key={i} className="text-xs text-lv-yellow/80 pl-4.5">
+											{w}
+										</p>
+									))}
+								</div>
+							)}
+
+							{/* Skipped */}
+							{result.skipped.length > 0 && (
+								<div className="rounded-md border border-border bg-muted/30 p-3 space-y-1">
+									<p className="text-xs font-medium text-muted-foreground">Skipped</p>
+									{result.skipped.map((s, i) => (
+										<p key={i} className="text-xs text-muted-foreground pl-4.5">
+											{s}
+										</p>
+									))}
+								</div>
+							)}
+
+							{/* Preview */}
+							<div className="space-y-1.5">
+								<p className={T.formLabel}>Preview</p>
+								<pre className="rounded-md border border-border bg-background/50 p-3 text-[11px] font-data text-muted-foreground overflow-x-auto max-h-48 overflow-y-auto">
+									{JSON.stringify(result.policy, null, 2)}
+								</pre>
+							</div>
+						</div>
+					)}
+				</div>
+
+				<DialogFooter className="gap-2">
+					{!result ? (
+						<Button type="button" onClick={handleParse} disabled={!input.trim()}>
+							Convert
+						</Button>
+					) : (
+						<Button type="button" onClick={handleImport}>
+							Import {result.policy.statements.length} Statement{result.policy.statements.length !== 1 ? "s" : ""}
+						</Button>
+					)}
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
 	);
 }
 

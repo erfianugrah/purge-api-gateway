@@ -1,9 +1,6 @@
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { fetchMock } from 'cloudflare:test';
-import {
-	createCredential, buildClient, signedFetch, mockR2, getR2Origin,
-	s3WildcardPolicy,
-} from './s3-helpers';
+import { createCredential, buildClient, signedFetch, mockR2, getR2Origin, s3WildcardPolicy } from './s3-helpers';
 
 describe('S3 proxy — core object operations', () => {
 	beforeAll(() => {
@@ -21,7 +18,7 @@ describe('S3 proxy — core object operations', () => {
 
 		mockR2('GET', '/test-bucket/hello.txt', 200, 'hello world', {
 			'Content-Type': 'text/plain',
-			'ETag': '"abc123"',
+			ETag: '"abc123"',
 		});
 
 		const res = await signedFetch(client, 'http://localhost/s3/test-bucket/hello.txt');
@@ -40,7 +37,7 @@ describe('S3 proxy — core object operations', () => {
 				headers: {
 					'Content-Type': 'text/plain',
 					'Content-Length': '42',
-					'ETag': '"ghi789"',
+					ETag: '"ghi789"',
 				},
 			});
 
@@ -54,7 +51,7 @@ describe('S3 proxy — core object operations', () => {
 		const { accessKeyId, secretAccessKey } = await createCredential(s3WildcardPolicy());
 		const client = buildClient(accessKeyId, secretAccessKey);
 
-		mockR2('PUT', '/test-bucket/upload.txt', 200, '', { 'ETag': '"def456"' });
+		mockR2('PUT', '/test-bucket/upload.txt', 200, '', { ETag: '"def456"' });
 
 		const res = await signedFetch(client, 'http://localhost/s3/test-bucket/upload.txt', {
 			method: 'PUT',
@@ -68,10 +65,7 @@ describe('S3 proxy — core object operations', () => {
 		const { accessKeyId, secretAccessKey } = await createCredential(s3WildcardPolicy());
 		const client = buildClient(accessKeyId, secretAccessKey);
 
-		fetchMock
-			.get(getR2Origin())
-			.intercept({ method: 'DELETE', path: '/test-bucket/delete-me.txt' })
-			.reply(204, '');
+		fetchMock.get(getR2Origin()).intercept({ method: 'DELETE', path: '/test-bucket/delete-me.txt' }).reply(204, '');
 
 		const res = await signedFetch(client, 'http://localhost/s3/test-bucket/delete-me.txt', {
 			method: 'DELETE',
@@ -83,8 +77,7 @@ describe('S3 proxy — core object operations', () => {
 		const { accessKeyId, secretAccessKey } = await createCredential(s3WildcardPolicy());
 		const client = buildClient(accessKeyId, secretAccessKey);
 
-		mockR2('PUT', '/dest-bucket/copied.txt', 200,
-			'<CopyObjectResult><ETag>"copy123"</ETag></CopyObjectResult>');
+		mockR2('PUT', '/dest-bucket/copied.txt', 200, '<CopyObjectResult><ETag>"copy123"</ETag></CopyObjectResult>');
 
 		const res = await signedFetch(client, 'http://localhost/s3/dest-bucket/copied.txt', {
 			method: 'PUT',
@@ -99,8 +92,12 @@ describe('S3 proxy — core object operations', () => {
 		const { accessKeyId, secretAccessKey } = await createCredential(s3WildcardPolicy());
 		const client = buildClient(accessKeyId, secretAccessKey);
 
-		mockR2('GET', '/test-bucket/no-such-key.txt', 404,
-			'<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message></Error>');
+		mockR2(
+			'GET',
+			'/test-bucket/no-such-key.txt',
+			404,
+			'<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message></Error>',
+		);
 
 		const res = await signedFetch(client, 'http://localhost/s3/test-bucket/no-such-key.txt');
 		expect(res.status).toBe(404);
@@ -143,7 +140,7 @@ describe('S3 proxy — multipart upload operations', () => {
 		fetchMock
 			.get(getR2Origin())
 			.intercept({ method: 'PUT', path: /^\/test-bucket\/big-file\.bin\?/ })
-			.reply(200, '', { headers: { 'ETag': '"part1"' } });
+			.reply(200, '', { headers: { ETag: '"part1"' } });
 
 		const res = await signedFetch(client, 'http://localhost/s3/test-bucket/big-file.bin?partNumber=1&uploadId=abc123', {
 			method: 'PUT',
@@ -217,12 +214,12 @@ describe('S3 proxy — DeleteObjects (batch)', () => {
 		fetchMock
 			.get(getR2Origin())
 			.intercept({ method: 'POST', path: /^\/test-bucket\?delete/ })
-			.reply(200, [
-				'<DeleteResult>',
-				'<Deleted><Key>file1.txt</Key></Deleted>',
-				'<Deleted><Key>file2.txt</Key></Deleted>',
-				'</DeleteResult>',
-			].join(''));
+			.reply(
+				200,
+				['<DeleteResult>', '<Deleted><Key>file1.txt</Key></Deleted>', '<Deleted><Key>file2.txt</Key></Deleted>', '</DeleteResult>'].join(
+					'',
+				),
+			);
 
 		const deleteXml = [
 			'<Delete>',
@@ -246,12 +243,14 @@ describe('S3 proxy — DeleteObjects (batch)', () => {
 	it('DeleteObjects with per-key auth -> rejects when one key is outside allowed prefix', async () => {
 		const { accessKeyId, secretAccessKey } = await createCredential({
 			version: '2025-01-01',
-			statements: [{
-				effect: 'allow',
-				actions: ['s3:DeleteObject'],
-				resources: ['object:test-bucket/*'],
-				conditions: [{ field: 'key.prefix', operator: 'eq', value: 'images/' }],
-			}],
+			statements: [
+				{
+					effect: 'allow',
+					actions: ['s3:DeleteObject'],
+					resources: ['object:test-bucket/*'],
+					conditions: [{ field: 'key.prefix', operator: 'eq', value: 'images/' }],
+				},
+			],
 		});
 		const client = buildClient(accessKeyId, secretAccessKey);
 
@@ -275,24 +274,29 @@ describe('S3 proxy — DeleteObjects (batch)', () => {
 	it('DeleteObjects with per-key auth -> allows when all keys are within allowed prefix', async () => {
 		const { accessKeyId, secretAccessKey } = await createCredential({
 			version: '2025-01-01',
-			statements: [{
-				effect: 'allow',
-				actions: ['s3:DeleteObject'],
-				resources: ['object:test-bucket/*'],
-				conditions: [{ field: 'key.prefix', operator: 'eq', value: 'images/' }],
-			}],
+			statements: [
+				{
+					effect: 'allow',
+					actions: ['s3:DeleteObject'],
+					resources: ['object:test-bucket/*'],
+					conditions: [{ field: 'key.prefix', operator: 'eq', value: 'images/' }],
+				},
+			],
 		});
 		const client = buildClient(accessKeyId, secretAccessKey);
 
 		fetchMock
 			.get(getR2Origin())
 			.intercept({ method: 'POST', path: /^\/test-bucket\?delete/ })
-			.reply(200, [
-				'<DeleteResult>',
-				'<Deleted><Key>images/photo1.jpg</Key></Deleted>',
-				'<Deleted><Key>images/photo2.jpg</Key></Deleted>',
-				'</DeleteResult>',
-			].join(''));
+			.reply(
+				200,
+				[
+					'<DeleteResult>',
+					'<Deleted><Key>images/photo1.jpg</Key></Deleted>',
+					'<Deleted><Key>images/photo2.jpg</Key></Deleted>',
+					'</DeleteResult>',
+				].join(''),
+			);
 
 		const deleteXml = [
 			'<Delete>',
@@ -312,19 +316,17 @@ describe('S3 proxy — DeleteObjects (batch)', () => {
 	it('DeleteObjects per-key auth -> rejects when bucket is wrong', async () => {
 		const { accessKeyId, secretAccessKey } = await createCredential({
 			version: '2025-01-01',
-			statements: [{
-				effect: 'allow',
-				actions: ['s3:DeleteObject'],
-				resources: ['object:allowed-bucket/*'],
-			}],
+			statements: [
+				{
+					effect: 'allow',
+					actions: ['s3:DeleteObject'],
+					resources: ['object:allowed-bucket/*'],
+				},
+			],
 		});
 		const client = buildClient(accessKeyId, secretAccessKey);
 
-		const deleteXml = [
-			'<Delete>',
-			'<Object><Key>file1.txt</Key></Object>',
-			'</Delete>',
-		].join('');
+		const deleteXml = ['<Delete>', '<Object><Key>file1.txt</Key></Object>', '</Delete>'].join('');
 
 		const res = await signedFetch(client, 'http://localhost/s3/wrong-bucket?delete', {
 			method: 'POST',
@@ -345,11 +347,7 @@ describe('S3 proxy — DeleteObjects (batch)', () => {
 			.intercept({ method: 'POST', path: /^\/test-bucket\?delete/ })
 			.reply(200, '<DeleteResult><Deleted><Key>file&amp;name.txt</Key></Deleted></DeleteResult>');
 
-		const deleteXml = [
-			'<Delete>',
-			'<Object><Key>file&amp;name.txt</Key></Object>',
-			'</Delete>',
-		].join('');
+		const deleteXml = ['<Delete>', '<Object><Key>file&amp;name.txt</Key></Object>', '</Delete>'].join('');
 
 		const res = await signedFetch(client, 'http://localhost/s3/test-bucket?delete', {
 			method: 'POST',
@@ -459,8 +457,12 @@ describe('S3 proxy — upstream error handling', () => {
 		const { accessKeyId, secretAccessKey } = await createCredential(s3WildcardPolicy());
 		const client = buildClient(accessKeyId, secretAccessKey);
 
-		mockR2('GET', '/error-bucket/file.txt', 500,
-			'<Error><Code>InternalError</Code><Message>We encountered an internal error. Please try again.</Message></Error>');
+		mockR2(
+			'GET',
+			'/error-bucket/file.txt',
+			500,
+			'<Error><Code>InternalError</Code><Message>We encountered an internal error. Please try again.</Message></Error>',
+		);
 
 		const res = await signedFetch(client, 'http://localhost/s3/error-bucket/file.txt');
 		expect(res.status).toBe(500);

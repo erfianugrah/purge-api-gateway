@@ -1,9 +1,9 @@
 /** Terminal UI helpers — colors, formatting, tables, spinners */
 
-import { readFileSync } from "node:fs";
+import { readFileSync } from 'node:fs';
 
 const isTTY = process.stdout.isTTY ?? false;
-const isColorDisabled = !!process.env["NO_COLOR"];
+const isColorDisabled = !!process.env['NO_COLOR'];
 const useColor = isTTY && !isColorDisabled;
 
 // --- ANSI colors (no-op if not TTY or NO_COLOR set) ---
@@ -25,13 +25,13 @@ export const gray = wrap(90, 39);
 // --- Symbols ---
 
 export const symbols = {
-	success: useColor ? "\x1b[32m\u2713\x1b[39m" : "[OK]",
-	error: useColor ? "\x1b[31m\u2717\x1b[39m" : "[ERR]",
-	warn: useColor ? "\x1b[33m!\x1b[39m" : "[!]",
-	info: useColor ? "\x1b[34mi\x1b[39m" : "[i]",
-	arrow: useColor ? "\x1b[36m>\x1b[39m" : ">",
-	bullet: useColor ? "\x1b[90m-\x1b[39m" : "-",
-	key: useColor ? "\x1b[33m\u{1F511}\x1b[39m" : "[KEY]",
+	success: useColor ? '\x1b[32m\u2713\x1b[39m' : '[OK]',
+	error: useColor ? '\x1b[31m\u2717\x1b[39m' : '[ERR]',
+	warn: useColor ? '\x1b[33m!\x1b[39m' : '[!]',
+	info: useColor ? '\x1b[34mi\x1b[39m' : '[i]',
+	arrow: useColor ? '\x1b[36m>\x1b[39m' : '>',
+	bullet: useColor ? '\x1b[90m-\x1b[39m' : '-',
+	key: useColor ? '\x1b[33m\u{1F511}\x1b[39m' : '[KEY]',
 };
 
 // --- Logging ---
@@ -53,12 +53,12 @@ export function info(msg: string): void {
 }
 
 export function label(name: string, value: string): void {
-	console.error(`  ${dim(name + ":")} ${value}`);
+	console.error(`  ${dim(name + ':')} ${value}`);
 }
 
 // --- Spinner ---
 
-const spinnerFrames = ["\u280B", "\u2819", "\u2839", "\u2838", "\u283C", "\u2834", "\u2826", "\u2827", "\u2807", "\u280F"];
+const spinnerFrames = ['\u280B', '\u2819', '\u2839', '\u2838', '\u283C', '\u2834', '\u2826', '\u2827', '\u2807', '\u280F'];
 
 export function spinner(msg: string): { stop: (finalMsg?: string) => void } {
 	if (!useColor) {
@@ -71,15 +71,13 @@ export function spinner(msg: string): { stop: (finalMsg?: string) => void } {
 	}
 	let i = 0;
 	const id = setInterval(() => {
-		process.stderr.write(
-			`\r${cyan(spinnerFrames[i % spinnerFrames.length])} ${msg}`,
-		);
+		process.stderr.write(`\r${cyan(spinnerFrames[i % spinnerFrames.length])} ${msg}`);
 		i++;
 	}, 80);
 	return {
 		stop(finalMsg?: string) {
 			clearInterval(id);
-			process.stderr.write("\r\x1b[K"); // clear line
+			process.stderr.write('\r\x1b[K'); // clear line
 			if (finalMsg) console.error(finalMsg);
 		},
 	};
@@ -87,19 +85,11 @@ export function spinner(msg: string): { stop: (finalMsg?: string) => void } {
 
 // --- Table ---
 
-export function table(
-	headers: string[],
-	rows: string[][],
-	opts?: { indent?: number },
-): void {
-	const indent = " ".repeat(opts?.indent ?? 2);
-	const widths = headers.map((h, i) =>
-		Math.max(h.length, ...rows.map((r) => stripAnsi(r[i] ?? "").length)),
-	);
+export function table(headers: string[], rows: string[][], opts?: { indent?: number }): void {
+	const indent = ' '.repeat(opts?.indent ?? 2);
+	const widths = headers.map((h, i) => Math.max(h.length, ...rows.map((r) => stripAnsi(r[i] ?? '').length)));
 
-	const headerLine = headers
-		.map((h, i) => bold(h.toUpperCase().padEnd(widths[i])))
-		.join("  ");
+	const headerLine = headers.map((h, i) => bold(h.toUpperCase().padEnd(widths[i]))).join('  ');
 	console.error(`${indent}${headerLine}`);
 
 	for (const row of rows) {
@@ -107,15 +97,15 @@ export function table(
 			.map((cell, i) => {
 				const stripped = stripAnsi(cell);
 				const pad = widths[i] - stripped.length;
-				return cell + " ".repeat(Math.max(0, pad));
+				return cell + ' '.repeat(Math.max(0, pad));
 			})
-			.join("  ");
+			.join('  ');
 		console.error(`${indent}${line}`);
 	}
 }
 
 function stripAnsi(s: string): string {
-	return s.replace(/\x1b\[[0-9;]*m/g, "");
+	return s.replace(/\x1b\[[0-9;]*m/g, '');
 }
 
 // --- JSON output (stdout for piping, stderr for human info) ---
@@ -133,64 +123,58 @@ export function formatApiError(status: number, data: unknown): void {
 	error(`Request failed ${dim(`(HTTP ${status})`)}`);
 	if (errors.length > 0) {
 		for (const e of errors) {
-			console.error(`  ${dim(String(e.code ?? status))} ${e.message ?? "Unknown error"}`);
+			console.error(`  ${dim(String(e.code ?? status))} ${e.message ?? 'Unknown error'}`);
 		}
 	}
 	if (d?.denied) {
 		const denied = d.denied as string[];
-		console.error(`  ${dim("Denied scopes:")} ${denied.join(", ")}`);
+		console.error(`  ${dim('Denied scopes:')} ${denied.join(', ')}`);
 	}
 }
 
 // --- Rate limit formatting ---
 
 export function formatRateLimit(headers: Headers): void {
-	const rl = headers.get("Ratelimit");
+	const rl = headers.get('Ratelimit');
 	if (!rl) return;
 
 	// Parse "purge-bulk";r=499;t=0
 	const nameMatch = rl.match(/"([^"]+)"/);
 	const rMatch = rl.match(/;r=(\d+)/);
 	const tMatch = rl.match(/;t=(\d+)/);
-	const name = nameMatch?.[1] ?? "unknown";
+	const name = nameMatch?.[1] ?? 'unknown';
 	const remaining = Number(rMatch?.[1] ?? 0);
 	const nextRefill = Number(tMatch?.[1] ?? 0);
 
-	const policy = headers.get("Ratelimit-Policy") ?? "";
+	const policy = headers.get('Ratelimit-Policy') ?? '';
 	const qMatch = policy.match(/;q=(\d+)/);
 	const wMatch = policy.match(/;w=(\d+)/);
 	const capacity = Number(qMatch?.[1] ?? 0);
 	const window = Number(wMatch?.[1] ?? 0);
 
-	const retryAfter = headers.get("Retry-After");
+	const retryAfter = headers.get('Retry-After');
 
 	const rate = window > 0 ? Math.round(capacity / window) : 0;
 	const used = capacity - remaining;
 	const pct = capacity > 0 ? Math.round((remaining / capacity) * 100) : 0;
-	const bar = capacity > 0 ? renderBar(pct) : "";
+	const bar = capacity > 0 ? renderBar(pct) : '';
 
 	const pctColor = pct > 50 ? green : pct > 20 ? yellow : red;
-	const isBulk = name.includes("bulk");
+	const isBulk = name.includes('bulk');
 
-	console.error("");
+	console.error('');
+	console.error(`  ${dim('┌─')} ${bold('Rate Limit')} ${dim('─')} ${cyan(name)} ${dim('─'.repeat(Math.max(1, 30 - name.length)))}`);
+	console.error(`  ${dim('│')} ${bar} ${pctColor(bold(String(pct) + '%'))} remaining`);
 	console.error(
-		`  ${dim("┌─")} ${bold("Rate Limit")} ${dim("─")} ${cyan(name)} ${dim("─".repeat(Math.max(1, 30 - name.length)))}`,
+		`  ${dim('│')} ${bold(String(remaining))}${dim('/')}${String(capacity)} tokens   ${dim('·')}   ${bold(String(used))} used this session`,
 	);
 	console.error(
-		`  ${dim("│")} ${bar} ${pctColor(bold(String(pct) + "%"))} remaining`,
-	);
-	console.error(
-		`  ${dim("│")} ${bold(String(remaining))}${dim("/")}${String(capacity)} tokens   ${dim("·")}   ${bold(String(used))} used this session`,
-	);
-	console.error(
-		`  ${dim("│")} Refill: ${bold(String(rate))} ${isBulk ? "req" : "URLs"}${dim("/sec")}${nextRefill > 0 ? `   ${dim("·")}   next refill in ${bold(nextRefill + "s")}` : ""}`,
+		`  ${dim('│')} Refill: ${bold(String(rate))} ${isBulk ? 'req' : 'URLs'}${dim('/sec')}${nextRefill > 0 ? `   ${dim('·')}   next refill in ${bold(nextRefill + 's')}` : ''}`,
 	);
 	if (retryAfter) {
-		console.error(
-			`  ${dim("│")} ${red(bold("THROTTLED"))} ${dim("·")} retry after ${bold(yellow(retryAfter + "s"))}`,
-		);
+		console.error(`  ${dim('│')} ${red(bold('THROTTLED'))} ${dim('·')} retry after ${bold(yellow(retryAfter + 's'))}`);
 	}
-	console.error(`  ${dim("└" + "─".repeat(45))}`);
+	console.error(`  ${dim('└' + '─'.repeat(45))}`);
 }
 
 function renderBar(pct: number): string {
@@ -199,12 +183,7 @@ function renderBar(pct: number): string {
 	const filled = Math.round((pct / 100) * width);
 	const empty = width - filled;
 	const color = pct > 50 ? green : pct > 20 ? yellow : red;
-	return (
-		dim("[") +
-		color("\u2588".repeat(filled)) +
-		dim("\u2591".repeat(empty)) +
-		dim("]")
-	);
+	return dim('[') + color('\u2588'.repeat(filled)) + dim('\u2591'.repeat(empty)) + dim(']');
 }
 
 // --- Duration formatting ---
@@ -225,23 +204,18 @@ export function formatKey(key: {
 	revoked: number;
 	created_by?: string | null;
 }): void {
-	const status =
-		key.revoked === 1
-			? red("revoked")
-			: key.expires_at && key.expires_at < Date.now()
-				? red("expired")
-				: green("active");
+	const status = key.revoked === 1 ? red('revoked') : key.expires_at && key.expires_at < Date.now() ? red('expired') : green('active');
 
-	label("ID", bold(key.id));
-	label("Name", key.name);
-	label("Zone", key.zone_id);
-	label("Status", status);
-	label("Created", new Date(key.created_at).toISOString());
+	label('ID', bold(key.id));
+	label('Name', key.name);
+	label('Zone', key.zone_id);
+	label('Status', status);
+	label('Created', new Date(key.created_at).toISOString());
 	if (key.expires_at) {
-		label("Expires", new Date(key.expires_at).toISOString());
+		label('Expires', new Date(key.expires_at).toISOString());
 	}
 	if (key.created_by) {
-		label("Created by", key.created_by);
+		label('Created by', key.created_by);
 	}
 }
 
@@ -253,35 +227,35 @@ export function formatPolicy(policyJson: string): void {
 	try {
 		doc = JSON.parse(policyJson) as PolicyDoc;
 	} catch {
-		console.error(`  ${dim("(invalid policy JSON)")}`);
+		console.error(`  ${dim('(invalid policy JSON)')}`);
 		return;
 	}
 
-	console.error(`  ${dim("version:")} ${doc.version ?? "unknown"}`);
+	console.error(`  ${dim('version:')} ${doc.version ?? 'unknown'}`);
 	const stmts = doc.statements ?? [];
 	if (stmts.length === 0) {
-		console.error(`  ${dim("No statements (key cannot authorize anything)")}`);
+		console.error(`  ${dim('No statements (key cannot authorize anything)')}`);
 		return;
 	}
 
 	for (let i = 0; i < stmts.length; i++) {
 		const s = stmts[i];
-		const effect = s.effect === "deny" ? red("deny") : green("allow");
+		const effect = s.effect === 'deny' ? red('deny') : green('allow');
 		console.error(`  ${dim(`[${i + 1}]`)} ${bold(effect)}`);
 
 		// Actions
 		if (s.actions && s.actions.length > 0) {
-			console.error(`      ${dim("actions:")} ${s.actions.map((a: string) => cyan(a)).join(dim(", "))}`);
+			console.error(`      ${dim('actions:')} ${s.actions.map((a: string) => cyan(a)).join(dim(', '))}`);
 		}
 
 		// Resources
 		if (s.resources && s.resources.length > 0) {
-			console.error(`      ${dim("resources:")} ${s.resources.map((r: string) => cyan(r)).join(dim(", "))}`);
+			console.error(`      ${dim('resources:')} ${s.resources.map((r: string) => cyan(r)).join(dim(', '))}`);
 		}
 
 		// Conditions
 		if (s.conditions && s.conditions.length > 0) {
-			console.error(`      ${dim("conditions:")}`);
+			console.error(`      ${dim('conditions:')}`);
 			for (const c of s.conditions) {
 				formatCondition(c, 8);
 			}
@@ -311,19 +285,19 @@ interface PolicyCondition {
 }
 
 function formatCondition(c: PolicyCondition, indent: number): void {
-	const pad = " ".repeat(indent);
+	const pad = ' '.repeat(indent);
 	if (c.any) {
-		console.error(`${pad}${yellow("any")}${dim(":")}`);
+		console.error(`${pad}${yellow('any')}${dim(':')}`);
 		for (const child of c.any) formatCondition(child, indent + 2);
 	} else if (c.all) {
-		console.error(`${pad}${yellow("all")}${dim(":")}`);
+		console.error(`${pad}${yellow('all')}${dim(':')}`);
 		for (const child of c.all) formatCondition(child, indent + 2);
 	} else if (c.not) {
-		console.error(`${pad}${yellow("not")}${dim(":")}`);
+		console.error(`${pad}${yellow('not')}${dim(':')}`);
 		formatCondition(c.not, indent + 2);
 	} else {
-		const val = typeof c.value === "string" ? c.value : JSON.stringify(c.value);
-		console.error(`${pad}${symbols.bullet} ${cyan(c.field ?? "?")} ${dim(c.operator ?? "?")} ${val}`);
+		const val = typeof c.value === 'string' ? c.value : JSON.stringify(c.value);
+		console.error(`${pad}${symbols.bullet} ${cyan(c.field ?? '?')} ${dim(c.operator ?? '?')} ${val}`);
 	}
 }
 
@@ -334,10 +308,10 @@ function formatCondition(c: PolicyCondition, indent: number): void {
 export function parsePolicy(input: string): unknown {
 	let jsonStr: string;
 
-	if (input.startsWith("@")) {
+	if (input.startsWith('@')) {
 		const filePath = input.slice(1);
 		try {
-			jsonStr = readFileSync(filePath, "utf-8");
+			jsonStr = readFileSync(filePath, 'utf-8');
 		} catch (err: any) {
 			error(`Cannot read policy file: ${bold(filePath)}`);
 			console.error(`  ${dim(err.message)}`);
@@ -350,11 +324,11 @@ export function parsePolicy(input: string): unknown {
 	try {
 		return JSON.parse(jsonStr);
 	} catch {
-		error("Invalid JSON in --policy argument.");
-		console.error("");
-		console.error(`  ${bold("Usage:")}`);
-		console.error(`    ${dim("Inline:")}  --policy '${cyan('{"version":"2025-01-01","statements":[...]}')}'`);
-		console.error(`    ${dim("File:")}    --policy ${cyan("@policy.json")}`);
+		error('Invalid JSON in --policy argument.');
+		console.error('');
+		console.error(`  ${bold('Usage:')}`);
+		console.error(`    ${dim('Inline:')}  --policy '${cyan('{"version":"2025-01-01","statements":[...]}')}'`);
+		console.error(`    ${dim('File:')}    --policy ${cyan('@policy.json')}`);
 		process.exit(1);
 	}
 }

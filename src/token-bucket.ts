@@ -1,4 +1,4 @@
-import type { ConsumeResult } from "./types";
+import type { ConsumeResult } from './types';
 
 export class TokenBucket {
 	private tokens: number;

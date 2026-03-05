@@ -1,9 +1,6 @@
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { SELF, fetchMock } from 'cloudflare:test';
-import {
-	createCredential, buildClient, signedFetch, mockR2,
-	s3WildcardPolicy,
-} from './s3-helpers';
+import { createCredential, buildClient, signedFetch, mockR2, s3WildcardPolicy } from './s3-helpers';
 import { adminHeaders } from './helpers';
 
 describe('S3 proxy — credential lifecycle via admin API', () => {
@@ -166,10 +163,9 @@ describe('S3 proxy — S3 analytics', () => {
 		// Give waitUntil a moment to complete
 		await new Promise((r) => setTimeout(r, 100));
 
-		const eventsRes = await SELF.fetch(
-			`http://localhost/admin/s3/analytics/events?credential_id=${accessKeyId}`,
-			{ headers: adminHeaders() },
-		);
+		const eventsRes = await SELF.fetch(`http://localhost/admin/s3/analytics/events?credential_id=${accessKeyId}`, {
+			headers: adminHeaders(),
+		});
 		expect(eventsRes.status).toBe(200);
 		const eventsData = await eventsRes.json<any>();
 		expect(eventsData.result.length).toBeGreaterThanOrEqual(1);
@@ -197,10 +193,7 @@ describe('S3 proxy — S3 analytics', () => {
 
 		await new Promise((r) => setTimeout(r, 100));
 
-		const summaryRes = await SELF.fetch(
-			`http://localhost/admin/s3/analytics/summary?bucket=analytics-bucket`,
-			{ headers: adminHeaders() },
-		);
+		const summaryRes = await SELF.fetch(`http://localhost/admin/s3/analytics/summary?bucket=analytics-bucket`, { headers: adminHeaders() });
 		expect(summaryRes.status).toBe(200);
 		const summaryData = await summaryRes.json<any>();
 		expect(summaryData.result.total_requests).toBeGreaterThanOrEqual(2);

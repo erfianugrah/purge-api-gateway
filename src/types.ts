@@ -1,16 +1,21 @@
 import type { PolicyDocument } from './policy-types';
+import type { AccessIdentity } from './auth-access';
 
 // --- Hono env ───────────────────────────────────────────────────────────────
 
 type HonoEnv = {
 	Bindings: Env;
+	Variables: {
+		/** Set when authenticated via Cloudflare Access JWT (dashboard SSO). */
+		accessIdentity?: AccessIdentity;
+	};
 };
 
 export type { HonoEnv };
 
 // --- Purge request types ---
 
-export type PurgeType = "single" | "bulk";
+export type PurgeType = 'single' | 'bulk';
 
 export interface ParsedPurgeRequest {
 	type: PurgeType;
@@ -58,7 +63,7 @@ export interface ApiKey {
 	revoked: number;
 	/** JSON-serialized PolicyDocument. */
 	policy: string;
-	/** Email of the user who created this key. NULL if not provided. */
+	/** Email of the user who created this key (from Access SSO or request body). NULL if not provided. */
 	created_by: string | null;
 	/** Per-key bulk rate limit (req/sec). NULL = use account default. */
 	bulk_rate: number | null;

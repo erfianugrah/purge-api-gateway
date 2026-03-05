@@ -3,7 +3,5 @@
 const DO_NAME = 'account';
 
 export function getStub(env: Env) {
-	return env.PURGE_RATE_LIMITER.get(
-		env.PURGE_RATE_LIMITER.idFromName(DO_NAME),
-	);
+	return env.GATEKEEPER.get(env.GATEKEEPER.idFromName(DO_NAME));
 }

@@ -1,88 +1,98 @@
-import { env } from "cloudflare:test";
-import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
-import { evaluatePolicy } from "../src/policy-engine";
-import type { PolicyDocument, RequestContext } from "../src/policy-types";
-import type { CreateKeyRequest } from "../src/types";
+import { env } from 'cloudflare:test';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
+import { evaluatePolicy } from '../src/policy-engine';
+import type { PolicyDocument, RequestContext } from '../src/policy-types';
+import type { CreateKeyRequest } from '../src/types';
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 
-const ZONE_ID = "aaaa1111bbbb2222cccc3333dddd4444";
+const ZONE_ID = 'aaaa1111bbbb2222cccc3333dddd4444';
 
 function getStub() {
-	const id = env.PURGE_RATE_LIMITER.idFromName("account");
-	return env.PURGE_RATE_LIMITER.get(id);
+	const id = env.GATEKEEPER.idFromName('account');
+	return env.GATEKEEPER.get(id);
 }
 
 // ─── Policy factories ──────────────────────────────────────────────────────
 
 function regexPolicy(pattern: string): PolicyDocument {
 	return {
-		version: "2025-01-01",
-		statements: [{
-			effect: "allow",
-			actions: ["purge:url"],
-			resources: [`zone:${ZONE_ID}`],
-			conditions: [{ field: "url", operator: "matches", value: pattern }],
-		}],
+		version: '2025-01-01',
+		statements: [
+			{
+				effect: 'allow',
+				actions: ['purge:url'],
+				resources: [`zone:${ZONE_ID}`],
+				conditions: [{ field: 'url', operator: 'matches', value: pattern }],
+			},
+		],
 	};
 }
 
 function compoundRegexPolicy(): PolicyDocument {
 	return {
-		version: "2025-01-01",
-		statements: [{
-			effect: "allow",
-			actions: ["purge:url"],
-			resources: [`zone:${ZONE_ID}`],
-			conditions: [{
-				all: [
-					{ field: "host", operator: "matches", value: "^(www\\.)?example\\.com$" },
-					{ field: "url.path", operator: "matches", value: "^/assets/(css|js|img)/[a-z0-9_-]+\\.[a-z]{2,4}$" },
-					{ field: "url", operator: "not_matches", value: "\\.(php|asp|jsp)$" },
+		version: '2025-01-01',
+		statements: [
+			{
+				effect: 'allow',
+				actions: ['purge:url'],
+				resources: [`zone:${ZONE_ID}`],
+				conditions: [
+					{
+						all: [
+							{ field: 'host', operator: 'matches', value: '^(www\\.)?example\\.com$' },
+							{ field: 'url.path', operator: 'matches', value: '^/assets/(css|js|img)/[a-z0-9_-]+\\.[a-z]{2,4}$' },
+							{ field: 'url', operator: 'not_matches', value: '\\.(php|asp|jsp)$' },
+						],
+					},
 				],
-			}],
-		}],
+			},
+		],
 	};
 }
 
 function wildcardConditionPolicy(): PolicyDocument {
 	return {
-		version: "2025-01-01",
-		statements: [{
-			effect: "allow",
-			actions: ["purge:url"],
-			resources: [`zone:${ZONE_ID}`],
-			conditions: [{ field: "url", operator: "wildcard", value: "https://*.example.com/assets/*" }],
-		}],
+		version: '2025-01-01',
+		statements: [
+			{
+				effect: 'allow',
+				actions: ['purge:url'],
+				resources: [`zone:${ZONE_ID}`],
+				conditions: [{ field: 'url', operator: 'wildcard', value: 'https://*.example.com/assets/*' }],
+			},
+		],
 	};
 }
 
 function multiStatementPolicy(): PolicyDocument {
 	return {
-		version: "2025-01-01",
+		version: '2025-01-01',
 		statements: [
 			{
-				effect: "allow",
-				actions: ["purge:host"],
+				effect: 'allow',
+				actions: ['purge:host'],
 				resources: [`zone:${ZONE_ID}`],
-				conditions: [{ field: "host", operator: "in", value: ["cdn.example.com", "static.example.com", "assets.example.com"] }],
+				conditions: [{ field: 'host', operator: 'in', value: ['cdn.example.com', 'static.example.com', 'assets.example.com'] }],
 			},
 			{
-				effect: "allow",
-				actions: ["purge:tag"],
+				effect: 'allow',
+				actions: ['purge:tag'],
 				resources: [`zone:${ZONE_ID}`],
-				conditions: [{ field: "tag", operator: "starts_with", value: "release-" }],
+				conditions: [{ field: 'tag', operator: 'starts_with', value: 'release-' }],
 			},
 			{
-				effect: "allow",
-				actions: ["purge:url"],
+				effect: 'allow',
+				actions: ['purge:url'],
 				resources: [`zone:${ZONE_ID}`],
-				conditions: [{
-					any: [
-						{ field: "url.path", operator: "starts_with", value: "/api/" },
-						{ field: "url.path", operator: "matches", value: "^/v[0-9]+/" },
-					],
-				}],
+				conditions: [
+					{
+						any: [
+							{ field: 'url.path', operator: 'starts_with', value: '/api/' },
+							{ field: 'url.path', operator: 'matches', value: '^/v[0-9]+/' },
+						],
+					},
+				],
 			},
 		],
 	};
@@ -90,20 +100,22 @@ function multiStatementPolicy(): PolicyDocument {
 
 function simpleEqPolicy(): PolicyDocument {
 	return {
-		version: "2025-01-01",
-		statements: [{
-			effect: "allow",
-			actions: ["purge:host"],
-			resources: [`zone:${ZONE_ID}`],
-			conditions: [{ field: "host", operator: "eq", value: "example.com" }],
-		}],
+		version: '2025-01-01',
+		statements: [
+			{
+				effect: 'allow',
+				actions: ['purge:host'],
+				resources: [`zone:${ZONE_ID}`],
+				conditions: [{ field: 'host', operator: 'eq', value: 'example.com' }],
+			},
+		],
 	};
 }
 
 function wildcardActionPolicy(): PolicyDocument {
 	return {
-		version: "2025-01-01",
-		statements: [{ effect: "allow", actions: ["purge:*"], resources: [`zone:${ZONE_ID}`] }],
+		version: '2025-01-01',
+		statements: [{ effect: 'allow', actions: ['purge:*'], resources: [`zone:${ZONE_ID}`] }],
 	};
 }
 
@@ -111,31 +123,37 @@ function wildcardActionPolicy(): PolicyDocument {
 
 function urlContext(url: string): RequestContext[] {
 	const parsed = new URL(url);
-	return [{
-		action: "purge:url",
-		resource: `zone:${ZONE_ID}`,
-		fields: {
-			url,
-			host: parsed.hostname,
-			"url.path": parsed.pathname,
+	return [
+		{
+			action: 'purge:url',
+			resource: `zone:${ZONE_ID}`,
+			fields: {
+				url,
+				host: parsed.hostname,
+				'url.path': parsed.pathname,
+			},
 		},
-	}];
+	];
 }
 
 function hostContext(host: string): RequestContext[] {
-	return [{
-		action: "purge:host",
-		resource: `zone:${ZONE_ID}`,
-		fields: { host },
-	}];
+	return [
+		{
+			action: 'purge:host',
+			resource: `zone:${ZONE_ID}`,
+			fields: { host },
+		},
+	];
 }
 
 function tagContext(tag: string): RequestContext[] {
-	return [{
-		action: "purge:tag",
-		resource: `zone:${ZONE_ID}`,
-		fields: { tag },
-	}];
+	return [
+		{
+			action: 'purge:tag',
+			resource: `zone:${ZONE_ID}`,
+			fields: { tag },
+		},
+	];
 }
 
 /** Create N distinct URL contexts for batch evaluation. */
@@ -145,12 +163,12 @@ function manyUrlContexts(n: number): RequestContext[] {
 		const url = `https://cdn.example.com/assets/js/bundle-${i}.js`;
 		const parsed = new URL(url);
 		contexts.push({
-			action: "purge:url",
+			action: 'purge:url',
 			resource: `zone:${ZONE_ID}`,
 			fields: {
 				url,
 				host: parsed.hostname,
-				"url.path": parsed.pathname,
+				'url.path': parsed.pathname,
 			},
 		});
 	}
@@ -195,84 +213,84 @@ function formatBench(label: string, r: BenchResult): string {
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
 
-describe("Performance — policy engine (in-process)", () => {
-	it("simple eq condition", () => {
+describe('Performance — policy engine (in-process)', () => {
+	it('simple eq condition', () => {
 		const policy = simpleEqPolicy();
-		const ctx = hostContext("example.com");
+		const ctx = hostContext('example.com');
 		const r = bench(() => evaluatePolicy(policy, ctx));
-		console.log(formatBench("simple eq", r));
+		console.log(formatBench('simple eq', r));
 		expect(r.avgUs).toBeLessThan(50); // should be sub-microsecond
 	});
 
-	it("wildcard action (no conditions)", () => {
+	it('wildcard action (no conditions)', () => {
 		const policy = wildcardActionPolicy();
-		const ctx = hostContext("example.com");
+		const ctx = hostContext('example.com');
 		const r = bench(() => evaluatePolicy(policy, ctx));
-		console.log(formatBench("wildcard action", r));
+		console.log(formatBench('wildcard action', r));
 		expect(r.avgUs).toBeLessThan(50);
 	});
 
-	it("single regex condition", () => {
-		const policy = regexPolicy("^https://cdn\\.example\\.com/assets/");
-		const ctx = urlContext("https://cdn.example.com/assets/js/bundle.js");
+	it('single regex condition', () => {
+		const policy = regexPolicy('^https://cdn\\.example\\.com/assets/');
+		const ctx = urlContext('https://cdn.example.com/assets/js/bundle.js');
 		const r = bench(() => evaluatePolicy(policy, ctx));
-		console.log(formatBench("single regex", r));
+		console.log(formatBench('single regex', r));
 		expect(r.avgUs).toBeLessThan(100);
 	});
 
 	it("compound regex (3 conditions AND'd)", () => {
 		const policy = compoundRegexPolicy();
-		const ctx = urlContext("https://www.example.com/assets/js/bundle-abc123.js");
+		const ctx = urlContext('https://www.example.com/assets/js/bundle-abc123.js');
 		const r = bench(() => evaluatePolicy(policy, ctx));
-		console.log(formatBench("compound regex (3 AND)", r));
+		console.log(formatBench('compound regex (3 AND)', r));
 		expect(r.avgUs).toBeLessThan(200);
 	});
 
-	it("wildcard condition (glob pattern)", () => {
+	it('wildcard condition (glob pattern)', () => {
 		const policy = wildcardConditionPolicy();
-		const ctx = urlContext("https://cdn.example.com/assets/img/logo.png");
+		const ctx = urlContext('https://cdn.example.com/assets/img/logo.png');
 		const r = bench(() => evaluatePolicy(policy, ctx));
-		console.log(formatBench("wildcard glob", r));
+		console.log(formatBench('wildcard glob', r));
 		expect(r.avgUs).toBeLessThan(100);
 	});
 
-	it("multi-statement policy with mixed operators", () => {
+	it('multi-statement policy with mixed operators', () => {
 		const policy = multiStatementPolicy();
 		// Match the third statement (regex in any)
-		const ctx = urlContext("https://api.example.com/v2/users");
+		const ctx = urlContext('https://api.example.com/v2/users');
 		const r = bench(() => evaluatePolicy(policy, ctx));
-		console.log(formatBench("multi-stmt mixed", r));
+		console.log(formatBench('multi-stmt mixed', r));
 		expect(r.avgUs).toBeLessThan(200);
 	});
 
-	it("multi-statement policy — denied (must check all statements)", () => {
+	it('multi-statement policy — denied (must check all statements)', () => {
 		const policy = multiStatementPolicy();
 		// This URL won't match any statement
-		const ctx = urlContext("https://example.com/about");
+		const ctx = urlContext('https://example.com/about');
 		const r = bench(() => evaluatePolicy(policy, ctx));
-		console.log(formatBench("multi-stmt denied", r));
+		console.log(formatBench('multi-stmt denied', r));
 		expect(r.avgUs).toBeLessThan(200);
 	});
 
-	it("batch: 30 URL contexts with regex", () => {
-		const policy = regexPolicy("^https://cdn\\.example\\.com/assets/");
+	it('batch: 30 URL contexts with regex', () => {
+		const policy = regexPolicy('^https://cdn\\.example\\.com/assets/');
 		const ctxs = manyUrlContexts(30);
 		const r = bench(() => evaluatePolicy(policy, ctxs), 1_000);
-		console.log(formatBench("30-URL batch regex", r));
+		console.log(formatBench('30-URL batch regex', r));
 		expect(r.avgUs).toBeLessThan(3000); // ~100us per URL
 	});
 
-	it("batch: 500 URL contexts with compound regex", () => {
+	it('batch: 500 URL contexts with compound regex', () => {
 		const policy = compoundRegexPolicy();
 		const ctxs = manyUrlContexts(500);
 		const r = bench(() => evaluatePolicy(policy, ctxs), 100);
-		console.log(formatBench("500-URL batch compound", r));
+		console.log(formatBench('500-URL batch compound', r));
 		// 500 URLs * ~20us each = ~10ms max
 		expect(r.avgUs).toBeLessThan(50_000);
 	});
 });
 
-describe("Performance — DO authorization (RPC)", () => {
+describe('Performance — DO authorization (RPC)', () => {
 	let keyIdSimple: string;
 	let keyIdRegex: string;
 	let keyIdCompound: string;
@@ -280,40 +298,40 @@ describe("Performance — DO authorization (RPC)", () => {
 	beforeAll(async () => {
 		const stub = getStub();
 		const simple = await stub.createKey({
-			name: "perf-simple",
+			name: 'perf-simple',
 			zone_id: ZONE_ID,
 			policy: simpleEqPolicy(),
 		} as CreateKeyRequest);
 		keyIdSimple = simple.key.id;
 
 		const regex = await stub.createKey({
-			name: "perf-regex",
+			name: 'perf-regex',
 			zone_id: ZONE_ID,
-			policy: regexPolicy("^https://cdn\\.example\\.com/assets/"),
+			policy: regexPolicy('^https://cdn\\.example\\.com/assets/'),
 		} as CreateKeyRequest);
 		keyIdRegex = regex.key.id;
 
 		const compound = await stub.createKey({
-			name: "perf-compound",
+			name: 'perf-compound',
 			zone_id: ZONE_ID,
 			policy: compoundRegexPolicy(),
 		} as CreateKeyRequest);
 		keyIdCompound = compound.key.id;
 	});
 
-	it("authorize — simple eq (via DO RPC)", async () => {
+	it('authorize — simple eq (via DO RPC)', async () => {
 		const stub = getStub();
 		const iterations = 200;
 		const times: number[] = [];
 
 		// Warmup
 		for (let i = 0; i < 10; i++) {
-			await stub.authorizeFromBody(keyIdSimple, ZONE_ID, { hosts: ["example.com"] });
+			await stub.authorizeFromBody(keyIdSimple, ZONE_ID, { hosts: ['example.com'] });
 		}
 
 		for (let i = 0; i < iterations; i++) {
 			const start = performance.now();
-			const result = await stub.authorizeFromBody(keyIdSimple, ZONE_ID, { hosts: ["example.com"] });
+			const result = await stub.authorizeFromBody(keyIdSimple, ZONE_ID, { hosts: ['example.com'] });
 			times.push(performance.now() - start);
 			expect(result.authorized).toBe(true);
 		}
@@ -326,18 +344,18 @@ describe("Performance — DO authorization (RPC)", () => {
 		expect(avgUs).toBeLessThan(5000); // DO RPC overhead is significant in tests
 	});
 
-	it("authorize — regex condition (via DO RPC)", async () => {
+	it('authorize — regex condition (via DO RPC)', async () => {
 		const stub = getStub();
 		const iterations = 200;
 		const times: number[] = [];
 
 		for (let i = 0; i < 10; i++) {
-			await stub.authorizeFromBody(keyIdRegex, ZONE_ID, { files: ["https://cdn.example.com/assets/js/app.js"] });
+			await stub.authorizeFromBody(keyIdRegex, ZONE_ID, { files: ['https://cdn.example.com/assets/js/app.js'] });
 		}
 
 		for (let i = 0; i < iterations; i++) {
 			const start = performance.now();
-			const result = await stub.authorizeFromBody(keyIdRegex, ZONE_ID, { files: ["https://cdn.example.com/assets/js/app.js"] });
+			const result = await stub.authorizeFromBody(keyIdRegex, ZONE_ID, { files: ['https://cdn.example.com/assets/js/app.js'] });
 			times.push(performance.now() - start);
 			expect(result.authorized).toBe(true);
 		}
@@ -350,18 +368,18 @@ describe("Performance — DO authorization (RPC)", () => {
 		expect(avgUs).toBeLessThan(5000);
 	});
 
-	it("authorize — compound regex 3-AND (via DO RPC)", async () => {
+	it('authorize — compound regex 3-AND (via DO RPC)', async () => {
 		const stub = getStub();
 		const iterations = 200;
 		const times: number[] = [];
 
 		for (let i = 0; i < 10; i++) {
-			await stub.authorizeFromBody(keyIdCompound, ZONE_ID, { files: ["https://www.example.com/assets/js/bundle-abc.js"] });
+			await stub.authorizeFromBody(keyIdCompound, ZONE_ID, { files: ['https://www.example.com/assets/js/bundle-abc.js'] });
 		}
 
 		for (let i = 0; i < iterations; i++) {
 			const start = performance.now();
-			const result = await stub.authorizeFromBody(keyIdCompound, ZONE_ID, { files: ["https://www.example.com/assets/js/bundle-abc.js"] });
+			const result = await stub.authorizeFromBody(keyIdCompound, ZONE_ID, { files: ['https://www.example.com/assets/js/bundle-abc.js'] });
 			times.push(performance.now() - start);
 			expect(result.authorized).toBe(true);
 		}
@@ -374,7 +392,7 @@ describe("Performance — DO authorization (RPC)", () => {
 		expect(avgUs).toBeLessThan(5000);
 	});
 
-	it("concurrent authorization — 50 parallel requests", async () => {
+	it('concurrent authorization — 50 parallel requests', async () => {
 		const stub = getStub();
 		const concurrency = 50;
 

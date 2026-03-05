@@ -37,11 +37,7 @@ ON s3_events (bucket, created_at DESC);
 `;
 
 async function ensureTables(db: D1Database): Promise<void> {
-	await db.batch([
-		db.prepare(CREATE_TABLE_SQL),
-		db.prepare(CREATE_CRED_INDEX_SQL),
-		db.prepare(CREATE_BUCKET_INDEX_SQL),
-	]);
+	await db.batch([db.prepare(CREATE_TABLE_SQL), db.prepare(CREATE_CRED_INDEX_SQL), db.prepare(CREATE_BUCKET_INDEX_SQL)]);
 }
 
 /**
@@ -55,15 +51,7 @@ export async function logS3Event(db: D1Database, event: S3Event): Promise<void> 
 				`INSERT INTO s3_events (credential_id, operation, bucket, key, status, duration_ms, created_at)
 				 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 			)
-			.bind(
-				event.credential_id,
-				event.operation,
-				event.bucket,
-				event.key,
-				event.status,
-				event.duration_ms,
-				event.created_at,
-			)
+			.bind(event.credential_id, event.operation, event.bucket, event.key, event.status, event.duration_ms, event.created_at)
 			.run();
 	} catch (e) {
 		// Fire-and-forget: log but don't crash the request
@@ -99,10 +87,7 @@ export interface S3AnalyticsSummary {
 /**
  * Query recent S3 events.
  */
-export async function queryS3Events(
-	db: D1Database,
-	query: S3AnalyticsQuery,
-): Promise<Record<string, unknown>[]> {
+export async function queryS3Events(db: D1Database, query: S3AnalyticsQuery): Promise<Record<string, unknown>[]> {
 	await ensureTables(db);
 
 	const conditions: string[] = [];
@@ -134,17 +119,17 @@ export async function queryS3Events(
 	const sql = `SELECT * FROM s3_events ${where} ORDER BY created_at DESC LIMIT ?`;
 	params.push(limit);
 
-	const result = await db.prepare(sql).bind(...params).all();
+	const result = await db
+		.prepare(sql)
+		.bind(...params)
+		.all();
 	return result.results as Record<string, unknown>[];
 }
 
 /**
  * Get summary analytics for S3 operations.
  */
-export async function queryS3Summary(
-	db: D1Database,
-	query: S3AnalyticsQuery,
-): Promise<S3AnalyticsSummary> {
+export async function queryS3Summary(db: D1Database, query: S3AnalyticsQuery): Promise<S3AnalyticsSummary> {
 	await ensureTables(db);
 
 	const conditions: string[] = [];

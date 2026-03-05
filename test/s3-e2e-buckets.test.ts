@@ -1,9 +1,6 @@
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { fetchMock } from 'cloudflare:test';
-import {
-	createCredential, buildClient, signedFetch, mockR2, getR2Origin,
-	s3WildcardPolicy,
-} from './s3-helpers';
+import { createCredential, buildClient, signedFetch, mockR2, getR2Origin, s3WildcardPolicy } from './s3-helpers';
 
 describe('S3 proxy — bucket-level operations', () => {
 	beforeAll(() => {
@@ -47,10 +44,7 @@ describe('S3 proxy — bucket-level operations', () => {
 		const { accessKeyId, secretAccessKey } = await createCredential(s3WildcardPolicy());
 		const client = buildClient(accessKeyId, secretAccessKey);
 
-		fetchMock
-			.get(getR2Origin())
-			.intercept({ method: 'HEAD', path: '/test-bucket' })
-			.reply(200, '');
+		fetchMock.get(getR2Origin()).intercept({ method: 'HEAD', path: '/test-bucket' }).reply(200, '');
 
 		const res = await signedFetch(client, 'http://localhost/s3/test-bucket', { method: 'HEAD' });
 		expect(res.status).toBe(200);
@@ -70,10 +64,7 @@ describe('S3 proxy — bucket-level operations', () => {
 		const { accessKeyId, secretAccessKey } = await createCredential(s3WildcardPolicy());
 		const client = buildClient(accessKeyId, secretAccessKey);
 
-		fetchMock
-			.get(getR2Origin())
-			.intercept({ method: 'DELETE', path: '/old-bucket' })
-			.reply(204, '');
+		fetchMock.get(getR2Origin()).intercept({ method: 'DELETE', path: '/old-bucket' }).reply(204, '');
 
 		const res = await signedFetch(client, 'http://localhost/s3/old-bucket', { method: 'DELETE' });
 		expect(res.status).toBe(204);

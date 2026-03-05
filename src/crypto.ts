@@ -20,7 +20,8 @@ export async function timingSafeEqual(a: string, b: string): Promise<boolean> {
 		crypto.subtle.sign('HMAC', hmacKey, encoder.encode(a)),
 		crypto.subtle.sign('HMAC', hmacKey, encoder.encode(b)),
 	]);
-	return crypto.subtle.timingSafeEqual(macA, macB);
+	// timingSafeEqual is a Workers runtime extension to SubtleCrypto — not in standard TS lib types
+	return (crypto.subtle as SubtleCrypto & { timingSafeEqual(a: ArrayBuffer, b: ArrayBuffer): boolean }).timingSafeEqual(macA, macB);
 }
 
 /** Type-safe helper to avoid repetitive `as unknown as T[]` on every DO SQLite query. */

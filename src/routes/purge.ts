@@ -1,9 +1,9 @@
-import { Hono } from "hono";
-import { logPurgeEvent } from "../analytics";
-import { getStub } from "../do-stub";
-import type { PurgeEvent } from "../analytics";
-import type { PurgeBody, ParsedPurgeRequest, PurgeResult, HonoEnv } from "../types";
-import type { PurgeRateLimiter } from "../durable-object";
+import { Hono } from 'hono';
+import { logPurgeEvent } from '../analytics';
+import { getStub } from '../do-stub';
+import type { PurgeEvent } from '../analytics';
+import type { PurgeBody, ParsedPurgeRequest, PurgeResult, HonoEnv } from '../types';
+import type { Gatekeeper } from '../durable-object';
 
 // ─── Per-isolate request collapsing ─────────────────────────────────────────
 
@@ -22,14 +22,14 @@ export function __testClearInflightCache() {
 
 export const purgeRoute = new Hono<HonoEnv>();
 
-purgeRoute.post("/v1/zones/:zoneId/purge_cache", async (c) => {
+purgeRoute.post('/v1/zones/:zoneId/purge_cache', async (c) => {
 	const start = Date.now();
-	const zoneId = c.req.param("zoneId");
+	const zoneId = c.req.param('zoneId');
 	const env = c.env;
 
 	const log: Record<string, unknown> = {
-		route: "purge",
-		method: "POST",
+		route: 'purge',
+		method: 'POST',
 		zoneId,
 		ts: new Date().toISOString(),
 	};
@@ -37,29 +37,23 @@ purgeRoute.post("/v1/zones/:zoneId/purge_cache", async (c) => {
 	// Validate zone ID format
 	if (!/^[a-f0-9]{32}$/.test(zoneId)) {
 		log.status = 400;
-		log.error = "invalid_zone_id";
+		log.error = 'invalid_zone_id';
 		log.durationMs = Date.now() - start;
 		console.log(JSON.stringify(log));
-		return c.json(
-			{ success: false, errors: [{ code: 400, message: "Invalid zone ID format" }] },
-			400,
-		);
+		return c.json({ success: false, errors: [{ code: 400, message: 'Invalid zone ID format' }] }, 400);
 	}
 
 	// Check auth header presence early
-	const authHeader = c.req.header("Authorization");
-	if (!authHeader || !authHeader.startsWith("Bearer ")) {
+	const authHeader = c.req.header('Authorization');
+	if (!authHeader || !authHeader.startsWith('Bearer ')) {
 		log.status = 401;
-		log.error = "missing_auth";
+		log.error = 'missing_auth';
 		log.durationMs = Date.now() - start;
 		console.log(JSON.stringify(log));
-		return c.json(
-			{ success: false, errors: [{ code: 401, message: "Missing Authorization: Bearer <key>" }] },
-			401,
-		);
+		return c.json({ success: false, errors: [{ code: 401, message: 'Missing Authorization: Bearer <key>' }] }, 401);
 	}
 	const keyId = authHeader.slice(7).trim();
-	log.keyId = keyId.slice(0, 12) + "...";
+	log.keyId = keyId.slice(0, 12) + '...';
 
 	// Parse body
 	let bodyText: string;
@@ -69,13 +63,10 @@ purgeRoute.post("/v1/zones/:zoneId/purge_cache", async (c) => {
 		body = JSON.parse(bodyText);
 	} catch {
 		log.status = 400;
-		log.error = "invalid_json";
+		log.error = 'invalid_json';
 		log.durationMs = Date.now() - start;
 		console.log(JSON.stringify(log));
-		return c.json(
-			{ success: false, errors: [{ code: 400, message: "Invalid JSON body" }] },
-			400,
-		);
+		return c.json({ success: false, errors: [{ code: 400, message: 'Invalid JSON body' }] }, 400);
 	}
 
 	// Classify purge type
@@ -84,14 +75,11 @@ purgeRoute.post("/v1/zones/:zoneId/purge_cache", async (c) => {
 		parsed = classifyPurge(body, env);
 	} catch (e: any) {
 		log.status = 400;
-		log.error = "invalid_purge_body";
+		log.error = 'invalid_purge_body';
 		log.detail = e.message;
 		log.durationMs = Date.now() - start;
 		console.log(JSON.stringify(log));
-		return c.json(
-			{ success: false, errors: [{ code: 400, message: e.message }] },
-			400,
-		);
+		return c.json({ success: false, errors: [{ code: 400, message: e.message }] }, 400);
 	}
 
 	log.purgeType = parsed.type;
@@ -102,9 +90,9 @@ purgeRoute.post("/v1/zones/:zoneId/purge_cache", async (c) => {
 	// Full policy authorization (always per-request, never collapsed)
 	const authResult = await stub.authorizeFromBody(keyId, zoneId, body);
 	if (!authResult.authorized) {
-		const status = authResult.error === "Invalid API key" ? 401 : 403;
+		const status = authResult.error === 'Invalid API key' ? 401 : 403;
 		log.status = status;
-		log.error = "auth_failed";
+		log.error = 'auth_failed';
 		log.authError = authResult.error;
 		log.denied = authResult.denied;
 		log.durationMs = Date.now() - start;
@@ -139,7 +127,7 @@ purgeRoute.post("/v1/zones/:zoneId/purge_cache", async (c) => {
 	}
 
 	// Determine collapse level for logging
-	const collapseLevel = collapsedAtIsolate ? "isolate" : result.collapsed ? "do" : false;
+	const collapseLevel = collapsedAtIsolate ? 'isolate' : result.collapsed ? 'do' : false;
 	log.collapsed = collapseLevel;
 	log.rateLimitAllowed = result.status !== 429 || !!collapseLevel;
 	log.rateLimitRemaining = result.rateLimitInfo.remaining;
@@ -147,9 +135,9 @@ purgeRoute.post("/v1/zones/:zoneId/purge_cache", async (c) => {
 	log.durationMs = Date.now() - start;
 
 	if (result.status === 429) {
-		const isUpstream = !result.headers["Ratelimit"];
-		log.error = isUpstream ? "upstream_rate_limited" : "client_rate_limited";
-		log.retryAfterSec = Number(result.headers["Retry-After"] ?? 0);
+		const isUpstream = !result.headers['Ratelimit'];
+		log.error = isUpstream ? 'upstream_rate_limited' : 'client_rate_limited';
+		log.retryAfterSec = Number(result.headers['Retry-After'] ?? 0);
 	}
 
 	console.log(JSON.stringify(log));
@@ -180,21 +168,14 @@ purgeRoute.post("/v1/zones/:zoneId/purge_cache", async (c) => {
 
 function createAndTrackFlight(
 	collapseKey: string,
-	stub: DurableObjectStub<PurgeRateLimiter>,
+	stub: DurableObjectStub<Gatekeeper>,
 	zoneId: string,
 	bodyText: string,
 	parsed: ParsedPurgeRequest,
 	env: Env,
 	keyId?: string,
 ): Promise<PurgeResult> {
-	const promise = stub.purge(
-		zoneId,
-		bodyText,
-		parsed.type,
-		parsed.cost,
-		env.UPSTREAM_API_TOKEN,
-		keyId,
-	);
+	const promise = stub.purge(zoneId, bodyText, parsed.type, parsed.cost, env.UPSTREAM_API_TOKEN, keyId);
 
 	inflightIsolate.set(collapseKey, promise);
 	promise.finally(() => {
@@ -217,32 +198,27 @@ export function classifyPurge(body: PurgeBody, env: Env): ParsedPurgeRequest {
 		if (body.files.length > singleMaxOps) {
 			throw new Error(`files array has ${body.files.length} items, max is ${singleMaxOps}`);
 		}
-		return { type: "single", cost: body.files.length, body };
+		return { type: 'single', cost: body.files.length, body };
 	}
 
-	if ("purge_everything" in body) {
+	if ('purge_everything' in body) {
 		if (body.purge_everything !== true) {
-			throw new Error("purge_everything must be boolean true");
+			throw new Error('purge_everything must be boolean true');
 		}
-		return { type: "bulk", cost: 1, body };
+		return { type: 'bulk', cost: 1, body };
 	}
 
 	const hasBulk =
-		(body.hosts && body.hosts.length > 0) ||
-		(body.tags && body.tags.length > 0) ||
-		(body.prefixes && body.prefixes.length > 0);
+		(body.hosts && body.hosts.length > 0) || (body.tags && body.tags.length > 0) || (body.prefixes && body.prefixes.length > 0);
 
 	if (hasBulk) {
-		const totalOps =
-			(body.hosts?.length || 0) +
-			(body.tags?.length || 0) +
-			(body.prefixes?.length || 0);
+		const totalOps = (body.hosts?.length || 0) + (body.tags?.length || 0) + (body.prefixes?.length || 0);
 
 		if (totalOps > bulkMaxOps) {
 			throw new Error(`Total bulk operations is ${totalOps}, max per request is ${bulkMaxOps}`);
 		}
-		return { type: "bulk", cost: 1, body };
+		return { type: 'bulk', cost: 1, body };
 	}
 
-	throw new Error("Request body must contain one of: files, hosts, tags, prefixes, or purge_everything");
+	throw new Error('Request body must contain one of: files, hosts, tags, prefixes, or purge_everything');
 }

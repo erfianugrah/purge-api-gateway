@@ -104,8 +104,11 @@ interface ApiResponse<T> {
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 	const res = await fetch(path, {
 		...init,
+		// Include cookies so the CF_Authorization cookie (Access SSO) is sent
+		credentials: "include",
 		headers: {
 			"Content-Type": "application/json",
+			...adminHeaders(),
 			...init?.headers,
 		},
 	});
@@ -120,10 +123,11 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 	return data.result;
 }
 
-// ─── Admin key header ────────────────────────────────────────────────
+// ─── Admin auth headers ──────────────────────────────────────────────
+// In production, the CF_Authorization cookie (set by Access SSO) handles auth.
+// For local dev without Access, an admin key can be set in localStorage.
 
 function adminHeaders(): Record<string, string> {
-	// Admin key can be set in localStorage via the dashboard settings.
 	const adminKey = typeof window !== "undefined" ? localStorage.getItem("adminKey") : null;
 	if (adminKey) {
 		return { "X-Admin-Key": adminKey };
@@ -136,19 +140,18 @@ function adminHeaders(): Record<string, string> {
 export async function listKeys(zoneId: string, status?: "active" | "revoked"): Promise<ApiKey[]> {
 	const params = new URLSearchParams({ zone_id: zoneId });
 	if (status) params.set("status", status);
-	return apiFetch<ApiKey[]>(`/admin/keys?${params}`, { headers: adminHeaders() });
+	return apiFetch<ApiKey[]>(`/admin/keys?${params}`);
 }
 
 export async function getKey(id: string, zoneId: string): Promise<{ key: ApiKey }> {
 	const params = new URLSearchParams({ zone_id: zoneId });
-	return apiFetch<{ key: ApiKey }>(`/admin/keys/${id}?${params}`, { headers: adminHeaders() });
+	return apiFetch<{ key: ApiKey }>(`/admin/keys/${id}?${params}`);
 }
 
 /** Create a key. The key.id (gw_...) IS the Bearer token — there is no separate secret field. */
 export async function createKey(req: CreateKeyRequest): Promise<{ key: ApiKey }> {
 	return apiFetch<{ key: ApiKey }>("/admin/keys", {
 		method: "POST",
-		headers: adminHeaders(),
 		body: JSON.stringify(req),
 	});
 }
@@ -157,7 +160,6 @@ export async function revokeKey(id: string, zoneId: string): Promise<{ revoked: 
 	const params = new URLSearchParams({ zone_id: zoneId });
 	return apiFetch<{ revoked: boolean }>(`/admin/keys/${id}?${params}`, {
 		method: "DELETE",
-		headers: adminHeaders(),
 	});
 }
 
@@ -177,7 +179,7 @@ export async function getEvents(query: EventsQuery): Promise<PurgeEvent[]> {
 	if (query.since) params.set("since", String(query.since));
 	if (query.until) params.set("until", String(query.until));
 	if (query.limit) params.set("limit", String(query.limit));
-	return apiFetch<PurgeEvent[]>(`/admin/analytics/events?${params}`, { headers: adminHeaders() });
+	return apiFetch<PurgeEvent[]>(`/admin/analytics/events?${params}`);
 }
 
 export async function getSummary(query: Omit<EventsQuery, "limit">): Promise<AnalyticsSummary> {
@@ -185,7 +187,7 @@ export async function getSummary(query: Omit<EventsQuery, "limit">): Promise<Ana
 	if (query.key_id) params.set("key_id", query.key_id);
 	if (query.since) params.set("since", String(query.since));
 	if (query.until) params.set("until", String(query.until));
-	return apiFetch<AnalyticsSummary>(`/admin/analytics/summary?${params}`, { headers: adminHeaders() });
+	return apiFetch<AnalyticsSummary>(`/admin/analytics/summary?${params}`);
 }
 
 // ─── S3 Credentials ──────────────────────────────────────────────────
@@ -212,17 +214,16 @@ export async function listS3Credentials(status?: "active" | "revoked"): Promise<
 	const params = new URLSearchParams();
 	if (status) params.set("status", status);
 	const qs = params.toString();
-	return apiFetch<S3Credential[]>(`/admin/s3/credentials${qs ? `?${qs}` : ""}`, { headers: adminHeaders() });
+	return apiFetch<S3Credential[]>(`/admin/s3/credentials${qs ? `?${qs}` : ""}`);
 }
 
 export async function getS3Credential(accessKeyId: string): Promise<{ credential: S3Credential }> {
-	return apiFetch<{ credential: S3Credential }>(`/admin/s3/credentials/${accessKeyId}`, { headers: adminHeaders() });
+	return apiFetch<{ credential: S3Credential }>(`/admin/s3/credentials/${accessKeyId}`);
 }
 
 export async function createS3Credential(req: CreateS3CredentialRequest): Promise<{ credential: S3Credential }> {
 	return apiFetch<{ credential: S3Credential }>("/admin/s3/credentials", {
 		method: "POST",
-		headers: adminHeaders(),
 		body: JSON.stringify(req),
 	});
 }
@@ -230,7 +231,6 @@ export async function createS3Credential(req: CreateS3CredentialRequest): Promis
 export async function revokeS3Credential(accessKeyId: string): Promise<{ revoked: boolean }> {
 	return apiFetch<{ revoked: boolean }>(`/admin/s3/credentials/${accessKeyId}`, {
 		method: "DELETE",
-		headers: adminHeaders(),
 	});
 }
 

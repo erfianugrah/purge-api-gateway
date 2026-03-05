@@ -70,12 +70,16 @@ s3App.all('/*', async (c) => {
 			log.durationMs = Date.now() - start;
 			console.log(JSON.stringify(log));
 
-			const errCode = verifyResult.error === 'SignatureDoesNotMatch' ? 'SignatureDoesNotMatch'
-				: verifyResult.error === 'Request has expired' ? 'AccessDenied'
-				: 'AccessDenied';
-			const errMsg = verifyResult.error === 'SignatureDoesNotMatch'
-				? 'The request signature we calculated does not match the signature you provided.'
-				: (verifyResult.error || 'Access Denied');
+			const errCode =
+				verifyResult.error === 'SignatureDoesNotMatch'
+					? 'SignatureDoesNotMatch'
+					: verifyResult.error === 'Request has expired'
+						? 'AccessDenied'
+						: 'AccessDenied';
+			const errMsg =
+				verifyResult.error === 'SignatureDoesNotMatch'
+					? 'The request signature we calculated does not match the signature you provided.'
+					: verifyResult.error || 'Access Denied';
 			return s3XmlError(errCode, errMsg, 403);
 		}
 	} else {
@@ -118,20 +122,23 @@ s3App.all('/*', async (c) => {
 			console.log(JSON.stringify(log));
 
 			const errCode = verifyResult.error === 'SignatureDoesNotMatch' ? 'SignatureDoesNotMatch' : 'AccessDenied';
-			const errMsg = verifyResult.error === 'SignatureDoesNotMatch'
-				? 'The request signature we calculated does not match the signature you provided.'
-				: (verifyResult.error || 'Access Denied');
+			const errMsg =
+				verifyResult.error === 'SignatureDoesNotMatch'
+					? 'The request signature we calculated does not match the signature you provided.'
+					: verifyResult.error || 'Access Denied';
 			return s3XmlError(errCode, errMsg, 403);
 		}
 	}
 
 	// 3. Build request context and authorize via IAM
 	const fields = buildConditionFields(op, c.req.method, c.req.raw.headers, url.searchParams);
-	const contexts: RequestContext[] = [{
-		action: op.action,
-		resource: op.resource,
-		fields,
-	}];
+	const contexts: RequestContext[] = [
+		{
+			action: op.action,
+			resource: op.resource,
+			fields,
+		},
+	];
 
 	// For CopyObject, we also need to authorize read on the source
 	if (op.name === 'CopyObject' || op.name === 'UploadPartCopy') {

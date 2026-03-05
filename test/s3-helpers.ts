@@ -18,10 +18,7 @@ export function getR2Origin(): string {
 // ─── Credential management ──────────────────────────────────────────────────
 
 /** Create an S3 credential via admin API and return both keys. */
-export async function createCredential(
-	policy: Record<string, unknown>,
-	name = 'e2e-test-cred',
-) {
+export async function createCredential(policy: Record<string, unknown>, name = 'e2e-test-cred') {
 	const res = await SELF.fetch('http://localhost/admin/s3/credentials', {
 		method: 'POST',
 		headers: adminHeaders(),
@@ -48,11 +45,7 @@ export function buildClient(accessKeyId: string, secretAccessKey: string): AwsCl
 }
 
 /** Sign a request and send it through SELF.fetch. */
-export async function signedFetch(
-	client: AwsClient,
-	url: string,
-	init?: RequestInit,
-): Promise<Response> {
+export async function signedFetch(client: AwsClient, url: string, init?: RequestInit): Promise<Response> {
 	const signed = await client.sign(url, {
 		method: init?.method || 'GET',
 		headers: init?.headers as HeadersInit | undefined,
@@ -62,11 +55,7 @@ export async function signedFetch(
 }
 
 /** Sign a request as a presigned URL (query string auth) and send it through SELF.fetch. */
-export async function presignedFetch(
-	client: AwsClient,
-	url: string,
-	init?: RequestInit & { expiresIn?: number },
-): Promise<Response> {
+export async function presignedFetch(client: AwsClient, url: string, init?: RequestInit & { expiresIn?: number }): Promise<Response> {
 	let signUrl = url;
 	if (init?.expiresIn) {
 		const u = new URL(url);
@@ -107,101 +96,132 @@ export function s3WildcardPolicy() {
 export function s3ReadOnlyPolicy(bucket: string) {
 	return {
 		version: '2025-01-01',
-		statements: [{
-			effect: 'allow',
-			actions: ['s3:GetObject', 's3:ListBucket'],
-			resources: [`bucket:${bucket}`, `object:${bucket}/*`],
-		}],
+		statements: [
+			{
+				effect: 'allow',
+				actions: ['s3:GetObject', 's3:ListBucket'],
+				resources: [`bucket:${bucket}`, `object:${bucket}/*`],
+			},
+		],
 	};
 }
 
 export function s3WriteOnlyPolicy(bucket: string, prefix?: string) {
 	return {
 		version: '2025-01-01',
-		statements: [{
-			effect: 'allow',
-			actions: ['s3:PutObject'],
-			resources: [`object:${bucket}/*`],
-			...(prefix ? {
-				conditions: [{
-					field: 'key',
-					operator: 'starts_with',
-					value: prefix,
-				}],
-			} : {}),
-		}],
+		statements: [
+			{
+				effect: 'allow',
+				actions: ['s3:PutObject'],
+				resources: [`object:${bucket}/*`],
+				...(prefix
+					? {
+							conditions: [
+								{
+									field: 'key',
+									operator: 'starts_with',
+									value: prefix,
+								},
+							],
+						}
+					: {}),
+			},
+		],
 	};
 }
 
 export function s3BucketAdminPolicy(bucket: string) {
 	return {
 		version: '2025-01-01',
-		statements: [{
-			effect: 'allow',
-			actions: ['s3:ListBucket', 's3:GetBucketCors', 's3:PutBucketCors', 's3:DeleteBucketCors',
-				's3:GetLifecycleConfiguration', 's3:PutLifecycleConfiguration',
-				's3:GetBucketLocation', 's3:GetEncryptionConfiguration', 's3:HeadBucket',
-				's3:ListBucketMultipartUploads'],
-			resources: [`bucket:${bucket}`],
-		}],
+		statements: [
+			{
+				effect: 'allow',
+				actions: [
+					's3:ListBucket',
+					's3:GetBucketCors',
+					's3:PutBucketCors',
+					's3:DeleteBucketCors',
+					's3:GetLifecycleConfiguration',
+					's3:PutLifecycleConfiguration',
+					's3:GetBucketLocation',
+					's3:GetEncryptionConfiguration',
+					's3:HeadBucket',
+					's3:ListBucketMultipartUploads',
+				],
+				resources: [`bucket:${bucket}`],
+			},
+		],
 	};
 }
 
 export function s3DeletePolicy(bucket: string) {
 	return {
 		version: '2025-01-01',
-		statements: [{
-			effect: 'allow',
-			actions: ['s3:DeleteObject'],
-			resources: [`object:${bucket}/*`],
-		}],
+		statements: [
+			{
+				effect: 'allow',
+				actions: ['s3:DeleteObject'],
+				resources: [`object:${bucket}/*`],
+			},
+		],
 	};
 }
 
 export function s3MultipartPolicy(bucket: string) {
 	return {
 		version: '2025-01-01',
-		statements: [{
-			effect: 'allow',
-			actions: ['s3:PutObject', 's3:AbortMultipartUpload', 's3:ListMultipartUploadParts'],
-			resources: [`object:${bucket}/*`],
-		}, {
-			effect: 'allow',
-			actions: ['s3:ListBucketMultipartUploads'],
-			resources: [`bucket:${bucket}`],
-		}],
+		statements: [
+			{
+				effect: 'allow',
+				actions: ['s3:PutObject', 's3:AbortMultipartUpload', 's3:ListMultipartUploadParts'],
+				resources: [`object:${bucket}/*`],
+			},
+			{
+				effect: 'allow',
+				actions: ['s3:ListBucketMultipartUploads'],
+				resources: [`bucket:${bucket}`],
+			},
+		],
 	};
 }
 
 export function s3ExtensionPolicy(bucket: string, extension: string) {
 	return {
 		version: '2025-01-01',
-		statements: [{
-			effect: 'allow',
-			actions: ['s3:PutObject', 's3:GetObject'],
-			resources: [`object:${bucket}/*`],
-			conditions: [{
-				field: 'key.extension',
-				operator: 'eq',
-				value: extension,
-			}],
-		}],
+		statements: [
+			{
+				effect: 'allow',
+				actions: ['s3:PutObject', 's3:GetObject'],
+				resources: [`object:${bucket}/*`],
+				conditions: [
+					{
+						field: 'key.extension',
+						operator: 'eq',
+						value: extension,
+					},
+				],
+			},
+		],
 	};
 }
 
 export function s3ContentTypePolicy(bucket: string, contentType: string) {
 	return {
 		version: '2025-01-01',
-		statements: [{
-			effect: 'allow',
-			actions: ['s3:PutObject'],
-			resources: [`object:${bucket}/*`],
-			conditions: [{
-				field: 'content_type',
-				operator: 'starts_with',
-				value: contentType,
-			}],
-		}],
+		statements: [
+			{
+				effect: 'allow',
+				actions: ['s3:PutObject'],
+				resources: [`object:${bucket}/*`],
+				conditions: [
+					{
+						field: 'content_type',
+						operator: 'starts_with',
+						value: contentType,
+					},
+				],
+			},
+		],
 	};
 }
 

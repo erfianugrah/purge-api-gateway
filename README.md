@@ -1056,7 +1056,7 @@ PLAN.md                          S3/R2 proxy design document
 smoke-test.sh                    120-case smoke test suite
 src/
   index.ts                       Entrypoint: Hono app + cron (mounts s3App, purge+S3 retention)
-  durable-object.ts              PurgeRateLimiter DO (purge rate limiting, IAM keys, S3 credentials)
+  durable-object.ts              Gatekeeper DO (purge rate limiting, IAM keys, S3 credentials)
   routes/
     purge.ts                     POST /v1/zones/:zoneId/purge_cache
     admin.ts                     Admin sub-app (key CRUD, S3 credential CRUD, analytics)

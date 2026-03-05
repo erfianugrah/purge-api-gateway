@@ -136,12 +136,7 @@ export function parsePath(path: string): { bucket?: string; key?: string } {
  * Detect the S3 operation from an HTTP request.
  * The path should be the portion after /s3, e.g. "/my-bucket/key.txt".
  */
-export function detectOperation(
-	method: string,
-	path: string,
-	searchParams: URLSearchParams,
-	headers: Headers,
-): S3Operation {
+export function detectOperation(method: string, path: string, searchParams: URLSearchParams, headers: Headers): S3Operation {
 	const { bucket, key } = parsePath(path);
 	const hasKey = key !== undefined && key !== '';
 	const hasUploadId = searchParams.has('uploadId');

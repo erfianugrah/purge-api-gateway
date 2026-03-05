@@ -1,12 +1,6 @@
 import { evaluatePolicy } from './policy-engine';
 import { queryAll } from './crypto';
-import type {
-	ApiKey,
-	CachedKey,
-	CreateKeyRequest,
-	AuthResult,
-	PurgeBody,
-} from './types';
+import type { ApiKey, CachedKey, CreateKeyRequest, AuthResult, PurgeBody } from './types';
 import type { PolicyDocument, RequestContext } from './policy-types';
 
 /** Key prefix for all keys. */
@@ -48,9 +42,7 @@ export class IamManager {
 	createKey(req: CreateKeyRequest): { key: ApiKey } {
 		const id = this.generateKeyId();
 		const now = Date.now();
-		const expiresAt = req.expires_in_days
-			? now + req.expires_in_days * 86400_000
-			: null;
+		const expiresAt = req.expires_in_days ? now + req.expires_in_days * 86400_000 : null;
 
 		const policyJson = JSON.stringify(req.policy);
 
@@ -122,10 +114,7 @@ export class IamManager {
 
 	/** Soft-revoke a key. */
 	revokeKey(id: string): boolean {
-		const result = this.sql.exec(
-			'UPDATE api_keys SET revoked = 1 WHERE id = ? AND revoked = 0',
-			id,
-		);
+		const result = this.sql.exec('UPDATE api_keys SET revoked = 1 WHERE id = ? AND revoked = 0', id);
 		this.cache.delete(id);
 		return result.rowsWritten > 0;
 	}

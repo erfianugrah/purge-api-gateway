@@ -84,12 +84,7 @@ export async function verifySigV4(
 
 	// 6. Build string to sign
 	const canonicalRequestHash = await sha256Hex(canonicalRequest);
-	const stringToSign = [
-		'AWS4-HMAC-SHA256',
-		amzDate,
-		parsed.credentialScope,
-		canonicalRequestHash,
-	].join('\n');
+	const stringToSign = ['AWS4-HMAC-SHA256', amzDate, parsed.credentialScope, canonicalRequestHash].join('\n');
 
 	// 7. Derive signing key
 	const signingKey = await deriveSigningKey(secret, parsed.date, parsed.region, parsed.service);
@@ -193,12 +188,7 @@ export async function verifySigV4Presigned(
 
 	// 6. Build string to sign
 	const canonicalRequestHash = await sha256Hex(canonicalRequest);
-	const stringToSign = [
-		'AWS4-HMAC-SHA256',
-		amzDate,
-		parsed.credentialScope,
-		canonicalRequestHash,
-	].join('\n');
+	const stringToSign = ['AWS4-HMAC-SHA256', amzDate, parsed.credentialScope, canonicalRequestHash].join('\n');
 
 	// 7. Derive signing key
 	const signingKey = await deriveSigningKey(secret, parsed.date, parsed.region, parsed.service);
@@ -310,15 +300,7 @@ function buildCanonicalRequest(
 	const canonicalHeaders = buildCanonicalHeaders(headers, signedHeaders, url, request);
 	const signedHeadersStr = signedHeaders.join(';');
 
-	return [
-		method,
-		canonicalUri,
-		canonicalQueryString,
-		canonicalHeaders,
-		'',
-		signedHeadersStr,
-		contentHash,
-	].join('\n');
+	return [method, canonicalUri, canonicalQueryString, canonicalHeaders, '', signedHeadersStr, contentHash].join('\n');
 }
 
 /**
@@ -358,7 +340,7 @@ function buildCanonicalQueryString(searchParams: URLSearchParams, excludeSignatu
 		if (excludeSignature && key === 'X-Amz-Signature') return;
 		pairs.push([encodeURIComponent(key), encodeURIComponent(value)]);
 	});
-	pairs.sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0);
+	pairs.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0));
 	return pairs.map(([k, v]) => `${k}=${v}`).join('&');
 }
 
@@ -390,12 +372,7 @@ function buildCanonicalHeaders(headers: Headers, signedHeaders: string[], url: U
 // ─── Crypto helpers ─────────────────────────────────────────────────────────
 
 /** Derive the Sig V4 signing key: HMAC chain of date/region/service/aws4_request. */
-async function deriveSigningKey(
-	secret: string,
-	date: string,
-	region: string,
-	service: string,
-): Promise<ArrayBuffer> {
+async function deriveSigningKey(secret: string, date: string, region: string, service: string): Promise<ArrayBuffer> {
 	let key: ArrayBuffer = ENCODER.encode(`AWS4${secret}`).buffer as ArrayBuffer;
 	key = await hmacRaw(key, date);
 	key = await hmacRaw(key, region);
@@ -406,13 +383,7 @@ async function deriveSigningKey(
 
 /** HMAC-SHA256 returning raw bytes. */
 async function hmacRaw(key: ArrayBuffer, data: string): Promise<ArrayBuffer> {
-	const cryptoKey = await crypto.subtle.importKey(
-		'raw',
-		key,
-		{ name: 'HMAC', hash: 'SHA-256' },
-		false,
-		['sign'],
-	);
+	const cryptoKey = await crypto.subtle.importKey('raw', key, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
 	return crypto.subtle.sign('HMAC', cryptoKey, ENCODER.encode(data));
 }
 
@@ -437,19 +408,13 @@ function bufToHex(buf: ArrayBuffer): string {
 
 /** Constant-time hex string comparison using HMAC. */
 async function timingSafeCompare(a: string, b: string): Promise<boolean> {
-	const key = await crypto.subtle.importKey(
-		'raw',
-		ENCODER.encode('sig-v4-compare'),
-		{ name: 'HMAC', hash: 'SHA-256' },
-		false,
-		['sign'],
-	);
+	const key = await crypto.subtle.importKey('raw', ENCODER.encode('sig-v4-compare'), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
 	const [macA, macB] = await Promise.all([
 		crypto.subtle.sign('HMAC', key, ENCODER.encode(a)),
 		crypto.subtle.sign('HMAC', key, ENCODER.encode(b)),
 	]);
-	// @ts-expect-error — timingSafeEqual exists in Workers runtime but not in all TS lib types
-	return crypto.subtle.timingSafeEqual(macA, macB);
+	// timingSafeEqual is a Workers runtime extension to SubtleCrypto — not in standard TS lib types
+	return (crypto.subtle as SubtleCrypto & { timingSafeEqual(a: ArrayBuffer, b: ArrayBuffer): boolean }).timingSafeEqual(macA, macB);
 }
 
 /** Parse ISO 8601 basic format: 20260305T111200Z → milliseconds. */

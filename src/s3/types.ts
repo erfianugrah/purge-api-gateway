@@ -12,7 +12,7 @@ export interface S3Credential {
 	revoked: number;
 	/** JSON-serialized PolicyDocument. */
 	policy: string;
-	/** Email of the user who created this credential. NULL if not provided. */
+	/** Email of the user who created this credential (from Access SSO or request body). NULL if not provided. */
 	created_by: string | null;
 }
 

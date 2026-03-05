@@ -12,17 +12,11 @@ export const adminAnalyticsApp = new Hono<HonoEnv>();
 adminAnalyticsApp.get('/events', async (c) => {
 	const zoneId = c.req.query('zone_id');
 	if (!zoneId) {
-		return c.json(
-			{ success: false, errors: [{ code: 400, message: 'zone_id query param required' }] },
-			400,
-		);
+		return c.json({ success: false, errors: [{ code: 400, message: 'zone_id query param required' }] }, 400);
 	}
 
 	if (!c.env.ANALYTICS_DB) {
-		return c.json(
-			{ success: false, errors: [{ code: 503, message: 'Analytics not configured' }] },
-			503,
-		);
+		return c.json({ success: false, errors: [{ code: 503, message: 'Analytics not configured' }] }, 503);
 	}
 
 	const query: AnalyticsQuery = {
@@ -35,12 +29,14 @@ adminAnalyticsApp.get('/events', async (c) => {
 
 	const events = await queryEvents(c.env.ANALYTICS_DB, query);
 
-	console.log(JSON.stringify({
-		route: 'admin.analytics.events',
-		zoneId,
-		count: events.length,
-		ts: new Date().toISOString(),
-	}));
+	console.log(
+		JSON.stringify({
+			route: 'admin.analytics.events',
+			zoneId,
+			count: events.length,
+			ts: new Date().toISOString(),
+		}),
+	);
 
 	return c.json({ success: true, result: events });
 });
@@ -50,17 +46,11 @@ adminAnalyticsApp.get('/events', async (c) => {
 adminAnalyticsApp.get('/summary', async (c) => {
 	const zoneId = c.req.query('zone_id');
 	if (!zoneId) {
-		return c.json(
-			{ success: false, errors: [{ code: 400, message: 'zone_id query param required' }] },
-			400,
-		);
+		return c.json({ success: false, errors: [{ code: 400, message: 'zone_id query param required' }] }, 400);
 	}
 
 	if (!c.env.ANALYTICS_DB) {
-		return c.json(
-			{ success: false, errors: [{ code: 503, message: 'Analytics not configured' }] },
-			503,
-		);
+		return c.json({ success: false, errors: [{ code: 503, message: 'Analytics not configured' }] }, 503);
 	}
 
 	const query: AnalyticsQuery = {
@@ -72,12 +62,14 @@ adminAnalyticsApp.get('/summary', async (c) => {
 
 	const summary = await querySummary(c.env.ANALYTICS_DB, query);
 
-	console.log(JSON.stringify({
-		route: 'admin.analytics.summary',
-		zoneId,
-		totalRequests: summary.total_requests,
-		ts: new Date().toISOString(),
-	}));
+	console.log(
+		JSON.stringify({
+			route: 'admin.analytics.summary',
+			zoneId,
+			totalRequests: summary.total_requests,
+			ts: new Date().toISOString(),
+		}),
+	);
 
 	return c.json({ success: true, result: summary });
 });

@@ -1,9 +1,6 @@
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { SELF, fetchMock } from 'cloudflare:test';
-import {
-	createCredential, buildClient, signedFetch, presignedFetch, mockR2,
-	s3WildcardPolicy, s3ReadOnlyPolicy,
-} from './s3-helpers';
+import { createCredential, buildClient, signedFetch, presignedFetch, mockR2, s3WildcardPolicy, s3ReadOnlyPolicy } from './s3-helpers';
 import { adminHeaders } from './helpers';
 
 describe('S3 proxy — authentication and signature', () => {

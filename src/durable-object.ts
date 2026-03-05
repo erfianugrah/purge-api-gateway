@@ -1,18 +1,10 @@
-import { DurableObject } from "cloudflare:workers";
-import { TokenBucket } from "./token-bucket";
-import { IamManager } from "./iam";
-import { S3CredentialManager } from "./s3/iam";
-import type {
-	PurgeBody,
-	ConsumeResult,
-	RateLimitConfig,
-	CreateKeyRequest,
-	AuthResult,
-	ApiKey,
-	PurgeResult,
-} from "./types";
-import type { S3Credential, CreateS3CredentialRequest } from "./s3/types";
-import type { RequestContext } from "./policy-types";
+import { DurableObject } from 'cloudflare:workers';
+import { TokenBucket } from './token-bucket';
+import { IamManager } from './iam';
+import { S3CredentialManager } from './s3/iam';
+import type { PurgeBody, ConsumeResult, RateLimitConfig, CreateKeyRequest, AuthResult, ApiKey, PurgeResult } from './types';
+import type { S3Credential, CreateS3CredentialRequest } from './s3/types';
+import type { RequestContext } from './policy-types';
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
@@ -33,12 +25,7 @@ export function parseConfig(env: Env): RateLimitConfig {
 
 // ─── Rate-limit 429 builder ─────────────────────────────────────────────────
 
-function buildRateLimitResult(
-	name: string,
-	bucket: TokenBucket,
-	consumeResult: ConsumeResult,
-	message: string,
-): PurgeResult {
+function buildRateLimitResult(name: string, bucket: TokenBucket, consumeResult: ConsumeResult, message: string): PurgeResult {
 	const window = Math.round(bucket.bucketSize / bucket.rate);
 	return {
 		status: 429,
@@ -49,10 +36,10 @@ function buildRateLimitResult(
 			result: null,
 		}),
 		headers: {
-			"Content-Type": "application/json",
-			"Retry-After": String(consumeResult.retryAfterSec),
+			'Content-Type': 'application/json',
+			'Retry-After': String(consumeResult.retryAfterSec),
 			Ratelimit: `"${name}";r=${consumeResult.remaining};t=${consumeResult.retryAfterSec}`,
-			"Ratelimit-Policy": `"${name}";q=${bucket.bucketSize};w=${window}`,
+			'Ratelimit-Policy': `"${name}";q=${bucket.bucketSize};w=${window}`,
 		},
 		collapsed: false,
 		reachedUpstream: false,
@@ -67,7 +54,7 @@ function buildRateLimitResult(
 
 // ─── Durable Object ─────────────────────────────────────────────────────────
 
-export class PurgeRateLimiter extends DurableObject<Env> {
+export class Gatekeeper extends DurableObject<Env> {
 	private bulkBucket!: TokenBucket;
 	private singleBucket!: TokenBucket;
 	private iam!: IamManager;
@@ -109,7 +96,7 @@ export class PurgeRateLimiter extends DurableObject<Env> {
 	async purge(
 		zoneId: string,
 		bodyText: string,
-		type: "single" | "bulk",
+		type: 'single' | 'bulk',
 		cost: number,
 		upstreamToken: string,
 		keyId?: string,
@@ -135,7 +122,7 @@ export class PurgeRateLimiter extends DurableObject<Env> {
 		promise.finally(() => {
 			setTimeout(() => {
 				this.inflightDO.delete(collapseKey);
-			}, PurgeRateLimiter.DO_COLLAPSE_GRACE_MS);
+			}, Gatekeeper.DO_COLLAPSE_GRACE_MS);
 		});
 
 		return promise;
@@ -145,11 +132,7 @@ export class PurgeRateLimiter extends DurableObject<Env> {
 	 * Check per-key rate limit. Returns a PurgeResult if rate limited, null if allowed.
 	 * Lazily creates per-key buckets from the key's stored rate limit config.
 	 */
-	private checkPerKeyRateLimit(
-		keyId: string,
-		type: "single" | "bulk",
-		cost: number,
-	): PurgeResult | null {
+	private checkPerKeyRateLimit(keyId: string, type: 'single' | 'bulk', cost: number): PurgeResult | null {
 		const keyData = this.iam.getKey(keyId);
 		if (!keyData) return null;
 
@@ -157,7 +140,7 @@ export class PurgeRateLimiter extends DurableObject<Env> {
 		const hasBulkLimit = key.bulk_rate !== null && key.bulk_bucket !== null;
 		const hasSingleLimit = key.single_rate !== null && key.single_bucket !== null;
 
-		if ((type === "bulk" && !hasBulkLimit) || (type === "single" && !hasSingleLimit)) {
+		if ((type === 'bulk' && !hasBulkLimit) || (type === 'single' && !hasSingleLimit)) {
 			return null;
 		}
 
@@ -170,17 +153,12 @@ export class PurgeRateLimiter extends DurableObject<Env> {
 			this.keyBuckets.set(keyId, buckets);
 		}
 
-		const bucket = type === "single" ? buckets.single : buckets.bulk;
+		const bucket = type === 'single' ? buckets.single : buckets.bulk;
 		const result = bucket.consume(cost);
 
 		if (!result.allowed) {
-			const name = type === "single" ? "purge-single-key" : "purge-bulk-key";
-			return buildRateLimitResult(
-				name,
-				bucket,
-				result,
-				`Per-key rate limit exceeded. Retry after ${result.retryAfterSec} second(s).`,
-			);
+			const name = type === 'single' ? 'purge-single-key' : 'purge-bulk-key';
+			return buildRateLimitResult(name, bucket, result, `Per-key rate limit exceeded. Retry after ${result.retryAfterSec} second(s).`);
 		}
 
 		return null;
@@ -189,14 +167,14 @@ export class PurgeRateLimiter extends DurableObject<Env> {
 	private async doPurge(
 		zoneId: string,
 		bodyText: string,
-		type: "single" | "bulk",
+		type: 'single' | 'bulk',
 		cost: number,
 		upstreamToken: string,
 	): Promise<PurgeResult> {
-		const bucket = type === "single" ? this.singleBucket : this.bulkBucket;
+		const bucket = type === 'single' ? this.singleBucket : this.bulkBucket;
 		const consumeResult = bucket.consume(cost);
 
-		const name = type === "single" ? "purge-single" : "purge-bulk";
+		const name = type === 'single' ? 'purge-single' : 'purge-bulk';
 		const window = Math.round(bucket.bucketSize / bucket.rate);
 
 		if (!consumeResult.allowed) {
@@ -214,10 +192,10 @@ export class PurgeRateLimiter extends DurableObject<Env> {
 
 		try {
 			upstreamResponse = await fetch(upstreamUrl, {
-				method: "POST",
+				method: 'POST',
 				headers: {
 					Authorization: `Bearer ${upstreamToken}`,
-					"Content-Type": "application/json",
+					'Content-Type': 'application/json',
 				},
 				body: bodyText,
 			});
@@ -228,7 +206,7 @@ export class PurgeRateLimiter extends DurableObject<Env> {
 					success: false,
 					errors: [{ code: 502, message: `Upstream request failed: ${e.message}` }],
 				}),
-				headers: { "Content-Type": "application/json" },
+				headers: { 'Content-Type': 'application/json' },
 				collapsed: false,
 				reachedUpstream: false,
 				rateLimitInfo: {
@@ -243,15 +221,15 @@ export class PurgeRateLimiter extends DurableObject<Env> {
 		// Handle upstream 429 — drain bucket
 		if (upstreamResponse.status === 429) {
 			bucket.drain();
-			const retryAfter = upstreamResponse.headers.get("Retry-After") || "5";
+			const retryAfter = upstreamResponse.headers.get('Retry-After') || '5';
 			const responseBody = await upstreamResponse.text();
 
 			return {
 				status: 429,
 				body: responseBody,
 				headers: {
-					"Content-Type": upstreamResponse.headers.get("Content-Type") || "application/json",
-					"Retry-After": retryAfter,
+					'Content-Type': upstreamResponse.headers.get('Content-Type') || 'application/json',
+					'Retry-After': retryAfter,
 				},
 				collapsed: false,
 				reachedUpstream: true,
@@ -270,15 +248,15 @@ export class PurgeRateLimiter extends DurableObject<Env> {
 		const secondsUntilRefill = bucket.getSecondsUntilRefill();
 
 		const responseHeaders: Record<string, string> = {
-			"Content-Type": upstreamResponse.headers.get("Content-Type") || "application/json",
+			'Content-Type': upstreamResponse.headers.get('Content-Type') || 'application/json',
 			Ratelimit: `"${name}";r=${remaining};t=${secondsUntilRefill}`,
-			"Ratelimit-Policy": `"${name}";q=${bucket.bucketSize};w=${window}`,
+			'Ratelimit-Policy': `"${name}";q=${bucket.bucketSize};w=${window}`,
 		};
 
-		const cfRay = upstreamResponse.headers.get("cf-ray");
-		const auditId = upstreamResponse.headers.get("cf-auditlog-id");
-		if (cfRay) responseHeaders["cf-ray"] = cfRay;
-		if (auditId) responseHeaders["cf-auditlog-id"] = auditId;
+		const cfRay = upstreamResponse.headers.get('cf-ray');
+		const auditId = upstreamResponse.headers.get('cf-auditlog-id');
+		if (cfRay) responseHeaders['cf-ray'] = cfRay;
+		if (auditId) responseHeaders['cf-auditlog-id'] = auditId;
 
 		return {
 			status: upstreamResponse.status,
@@ -297,13 +275,13 @@ export class PurgeRateLimiter extends DurableObject<Env> {
 
 	// ─── RPC methods ────────────────────────────────────────────────────
 
-	async consume(type: "single" | "bulk", count: number): Promise<ConsumeResult> {
-		const bucket = type === "single" ? this.singleBucket : this.bulkBucket;
+	async consume(type: 'single' | 'bulk', count: number): Promise<ConsumeResult> {
+		const bucket = type === 'single' ? this.singleBucket : this.bulkBucket;
 		return bucket.consume(count);
 	}
 
-	async getRateLimitInfo(type: "single" | "bulk") {
-		const bucket = type === "single" ? this.singleBucket : this.bulkBucket;
+	async getRateLimitInfo(type: 'single' | 'bulk') {
+		const bucket = type === 'single' ? this.singleBucket : this.bulkBucket;
 		return {
 			remaining: bucket.getRemaining(),
 			secondsUntilRefill: bucket.getSecondsUntilRefill(),
@@ -312,8 +290,8 @@ export class PurgeRateLimiter extends DurableObject<Env> {
 		};
 	}
 
-	async drainBucket(type: "single" | "bulk"): Promise<void> {
-		const bucket = type === "single" ? this.singleBucket : this.bulkBucket;
+	async drainBucket(type: 'single' | 'bulk'): Promise<void> {
+		const bucket = type === 'single' ? this.singleBucket : this.bulkBucket;
 		bucket.drain();
 	}
 
@@ -325,7 +303,7 @@ export class PurgeRateLimiter extends DurableObject<Env> {
 		return this.iam.createKey(req);
 	}
 
-	async listKeys(zoneId?: string, filter?: "active" | "revoked"): Promise<ApiKey[]> {
+	async listKeys(zoneId?: string, filter?: 'active' | 'revoked'): Promise<ApiKey[]> {
 		return this.iam.listKeys(zoneId, filter);
 	}
 

@@ -40,9 +40,7 @@ export class S3CredentialManager {
 		const accessKeyId = this.generateAccessKeyId();
 		const secretAccessKey = this.generateSecretAccessKey();
 		const now = Date.now();
-		const expiresAt = req.expires_in_days
-			? now + req.expires_in_days * 86400_000
-			: null;
+		const expiresAt = req.expires_in_days ? now + req.expires_in_days * 86400_000 : null;
 
 		const policyJson = JSON.stringify(req.policy);
 
@@ -111,10 +109,7 @@ export class S3CredentialManager {
 
 	/** Soft-revoke a credential. */
 	revokeCredential(accessKeyId: string): boolean {
-		const result = this.sql.exec(
-			'UPDATE s3_credentials SET revoked = 1 WHERE access_key_id = ? AND revoked = 0',
-			accessKeyId,
-		);
+		const result = this.sql.exec('UPDATE s3_credentials SET revoked = 1 WHERE access_key_id = ? AND revoked = 0', accessKeyId);
 		this.cache.delete(accessKeyId);
 		return result.rowsWritten > 0;
 	}
@@ -176,11 +171,7 @@ export class S3CredentialManager {
 		}
 
 		// Load full credential (with secret) for auth path
-		const rows = queryAll<S3Credential>(
-			this.sql,
-			'SELECT * FROM s3_credentials WHERE access_key_id = ?',
-			accessKeyId,
-		);
+		const rows = queryAll<S3Credential>(this.sql, 'SELECT * FROM s3_credentials WHERE access_key_id = ?', accessKeyId);
 		if (rows.length === 0) {
 			this.cache.delete(accessKeyId);
 			return null;

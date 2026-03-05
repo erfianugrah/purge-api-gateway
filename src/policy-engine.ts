@@ -1,19 +1,5 @@
-import type {
-	PolicyDocument,
-	Statement,
-	Condition,
-	LeafCondition,
-	RequestContext,
-	ConditionValue,
-} from './policy-types';
-import {
-	isLeafCondition,
-	isAnyCondition,
-	isAllCondition,
-	isNotCondition,
-	MAX_REGEX_LENGTH,
-	POLICY_VERSION,
-} from './policy-types';
+import type { PolicyDocument, Statement, Condition, LeafCondition, RequestContext, ConditionValue } from './policy-types';
+import { isLeafCondition, isAnyCondition, isAllCondition, isNotCondition, MAX_REGEX_LENGTH, POLICY_VERSION } from './policy-types';
 
 // ─── Policy evaluation ──────────────────────────────────────────────────────
 
@@ -263,8 +249,19 @@ function validateStatement(stmt: unknown, path: string, errors: PolicyValidation
 }
 
 const VALID_OPERATORS = new Set<string>([
-	'eq', 'ne', 'contains', 'not_contains', 'starts_with', 'ends_with',
-	'matches', 'not_matches', 'in', 'not_in', 'wildcard', 'exists', 'not_exists',
+	'eq',
+	'ne',
+	'contains',
+	'not_contains',
+	'starts_with',
+	'ends_with',
+	'matches',
+	'not_matches',
+	'in',
+	'not_in',
+	'wildcard',
+	'exists',
+	'not_exists',
 ]);
 
 /** Patterns known to cause catastrophic backtracking. */
@@ -369,5 +366,3 @@ function validateCondition(cond: unknown, path: string, errors: PolicyValidation
 		}
 	}
 }
-
-

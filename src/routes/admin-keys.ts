@@ -24,39 +24,27 @@ adminKeysApp.post('/', async (c) => {
 		log.status = 400;
 		log.error = 'invalid_json';
 		console.log(JSON.stringify(log));
-		return c.json(
-			{ success: false, errors: [{ code: 400, message: 'Invalid JSON body' }] },
-			400,
-		);
+		return c.json({ success: false, errors: [{ code: 400, message: 'Invalid JSON body' }] }, 400);
 	}
 
 	if (!raw.name || typeof raw.name !== 'string') {
 		log.status = 400;
 		log.error = 'missing_name';
 		console.log(JSON.stringify(log));
-		return c.json(
-			{ success: false, errors: [{ code: 400, message: 'Required field: name (string)' }] },
-			400,
-		);
+		return c.json({ success: false, errors: [{ code: 400, message: 'Required field: name (string)' }] }, 400);
 	}
 	if (!raw.zone_id || typeof raw.zone_id !== 'string') {
 		log.status = 400;
 		log.error = 'missing_zone_id';
 		console.log(JSON.stringify(log));
-		return c.json(
-			{ success: false, errors: [{ code: 400, message: 'Required field: zone_id (string)' }] },
-			400,
-		);
+		return c.json({ success: false, errors: [{ code: 400, message: 'Required field: zone_id (string)' }] }, 400);
 	}
 
 	if (!raw.policy || typeof raw.policy !== 'object') {
 		log.status = 400;
 		log.error = 'missing_policy';
 		console.log(JSON.stringify(log));
-		return c.json(
-			{ success: false, errors: [{ code: 400, message: 'Required field: policy (object with version + statements)' }] },
-			400,
-		);
+		return c.json({ success: false, errors: [{ code: 400, message: 'Required field: policy (object with version + statements)' }] }, 400);
 	}
 
 	const policyErrors = validatePolicy(raw.policy);
@@ -84,18 +72,16 @@ adminKeysApp.post('/', async (c) => {
 			log.status = 400;
 			log.error = 'rate_limit_exceeds_account';
 			console.log(JSON.stringify(log));
-			return c.json(
-				{ success: false, errors: [{ code: 400, message: rateLimitError }] },
-				400,
-			);
+			return c.json({ success: false, errors: [{ code: 400, message: rateLimitError }] }, 400);
 		}
 	}
 
+	const identity = c.get('accessIdentity');
 	const req: CreateKeyRequest = {
 		name: raw.name as string,
 		zone_id: raw.zone_id as string,
 		policy: raw.policy as PolicyDocument,
-		created_by: typeof raw.created_by === 'string' ? raw.created_by : undefined,
+		created_by: identity?.email ?? (typeof raw.created_by === 'string' ? raw.created_by : undefined),
 		expires_in_days: typeof raw.expires_in_days === 'number' ? raw.expires_in_days : undefined,
 		rate_limit: rateLimit,
 	};
@@ -119,10 +105,7 @@ adminKeysApp.post('/', async (c) => {
 adminKeysApp.get('/', async (c) => {
 	const zoneId = c.req.query('zone_id');
 	if (!zoneId) {
-		return c.json(
-			{ success: false, errors: [{ code: 400, message: 'zone_id query param required' }] },
-			400,
-		);
+		return c.json({ success: false, errors: [{ code: 400, message: 'zone_id query param required' }] }, 400);
 	}
 
 	const statusFilter = c.req.query('status') as 'active' | 'revoked' | undefined;
@@ -132,13 +115,15 @@ adminKeysApp.get('/', async (c) => {
 	const stub = getStub(c.env);
 	const keys = await stub.listKeys(zoneId, filter);
 
-	console.log(JSON.stringify({
-		route: 'admin.listKeys',
-		zoneId,
-		filter: filter ?? 'all',
-		count: keys.length,
-		ts: new Date().toISOString(),
-	}));
+	console.log(
+		JSON.stringify({
+			route: 'admin.listKeys',
+			zoneId,
+			filter: filter ?? 'all',
+			count: keys.length,
+			ts: new Date().toISOString(),
+		}),
+	);
 
 	return c.json({ success: true, result: keys });
 });
@@ -148,10 +133,7 @@ adminKeysApp.get('/', async (c) => {
 adminKeysApp.get('/:id', async (c) => {
 	const zoneId = c.req.query('zone_id');
 	if (!zoneId) {
-		return c.json(
-			{ success: false, errors: [{ code: 400, message: 'zone_id query param required' }] },
-			400,
-		);
+		return c.json({ success: false, errors: [{ code: 400, message: 'zone_id query param required' }] }, 400);
 	}
 
 	const keyId = c.req.param('id');
@@ -159,10 +141,7 @@ adminKeysApp.get('/:id', async (c) => {
 	const result = await stub.getKey(keyId);
 
 	if (!result || result.key.zone_id !== zoneId) {
-		return c.json(
-			{ success: false, errors: [{ code: 404, message: 'Key not found' }] },
-			404,
-		);
+		return c.json({ success: false, errors: [{ code: 404, message: 'Key not found' }] }, 404);
 	}
 
 	return c.json({ success: true, result });
@@ -173,10 +152,7 @@ adminKeysApp.get('/:id', async (c) => {
 adminKeysApp.delete('/:id', async (c) => {
 	const zoneId = c.req.query('zone_id');
 	if (!zoneId) {
-		return c.json(
-			{ success: false, errors: [{ code: 400, message: 'zone_id query param required' }] },
-			400,
-		);
+		return c.json({ success: false, errors: [{ code: 400, message: 'zone_id query param required' }] }, 400);
 	}
 
 	const keyId = c.req.param('id');
@@ -184,10 +160,7 @@ adminKeysApp.delete('/:id', async (c) => {
 
 	const existing = await stub.getKey(keyId);
 	if (!existing || existing.key.zone_id !== zoneId) {
-		return c.json(
-			{ success: false, errors: [{ code: 404, message: 'Key not found or already revoked' }] },
-			404,
-		);
+		return c.json({ success: false, errors: [{ code: 404, message: 'Key not found or already revoked' }] }, 404);
 	}
 
 	const revoked = await stub.revokeKey(keyId);
@@ -202,10 +175,7 @@ adminKeysApp.delete('/:id', async (c) => {
 	console.log(JSON.stringify(log));
 
 	if (!revoked) {
-		return c.json(
-			{ success: false, errors: [{ code: 404, message: 'Key not found or already revoked' }] },
-			404,
-		);
+		return c.json({ success: false, errors: [{ code: 404, message: 'Key not found or already revoked' }] }, 404);
 	}
 
 	return c.json({ success: true, result: { revoked: true } });

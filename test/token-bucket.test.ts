@@ -1,17 +1,17 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { TokenBucket } from "../src/token-bucket";
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { TokenBucket } from '../src/token-bucket';
 
-describe("TokenBucket", () => {
+describe('TokenBucket', () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
-		vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+		vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
 	});
 
 	afterEach(() => {
 		vi.useRealTimers();
 	});
 
-	it("consume within capacity → allowed", () => {
+	it('consume within capacity → allowed', () => {
 		const bucket = new TokenBucket(10, 100); // 10/s, 100 max
 		const result = bucket.consume(5);
 		expect(result.allowed).toBe(true);
@@ -19,7 +19,7 @@ describe("TokenBucket", () => {
 		expect(result.retryAfterSec).toBe(0);
 	});
 
-	it("consume exactly at capacity → allowed, remaining = 0", () => {
+	it('consume exactly at capacity → allowed, remaining = 0', () => {
 		const bucket = new TokenBucket(10, 100);
 		const result = bucket.consume(100);
 		expect(result.allowed).toBe(true);
@@ -27,7 +27,7 @@ describe("TokenBucket", () => {
 		expect(result.retryAfterSec).toBe(0);
 	});
 
-	it("consume over capacity → denied, correct retryAfter", () => {
+	it('consume over capacity → denied, correct retryAfter', () => {
 		const bucket = new TokenBucket(10, 100);
 		// Drain first
 		bucket.consume(100);
@@ -38,7 +38,7 @@ describe("TokenBucket", () => {
 		expect(result.retryAfterSec).toBe(1);
 	});
 
-	it("retryAfter reflects actual deficit", () => {
+	it('retryAfter reflects actual deficit', () => {
 		const bucket = new TokenBucket(10, 100);
 		bucket.consume(100); // drain
 		// Try to consume 25 tokens with 0 remaining → deficit = 25, rate = 10 → ceil(25/10) = 3
@@ -47,7 +47,7 @@ describe("TokenBucket", () => {
 		expect(result.retryAfterSec).toBe(3);
 	});
 
-	it("refill after elapsed time → correct token count", () => {
+	it('refill after elapsed time → correct token count', () => {
 		const bucket = new TokenBucket(10, 100);
 		bucket.consume(50); // 50 remaining
 
@@ -58,7 +58,7 @@ describe("TokenBucket", () => {
 		expect(result.remaining).toBe(80);
 	});
 
-	it("refill does not exceed bucket size", () => {
+	it('refill does not exceed bucket size', () => {
 		const bucket = new TokenBucket(10, 100);
 		bucket.consume(10); // 90 remaining
 
@@ -68,7 +68,7 @@ describe("TokenBucket", () => {
 		expect(bucket.getRemaining()).toBe(100);
 	});
 
-	it("burst: empty bucket, wait, burst up to bucket size", () => {
+	it('burst: empty bucket, wait, burst up to bucket size', () => {
 		const bucket = new TokenBucket(50, 500);
 		bucket.consume(500); // drain to 0
 		expect(bucket.getRemaining()).toBe(0);
@@ -83,7 +83,7 @@ describe("TokenBucket", () => {
 		expect(result.remaining).toBe(0);
 	});
 
-	it("fractional tokens: no floating point drift over many operations", () => {
+	it('fractional tokens: no floating point drift over many operations', () => {
 		// rate = 3 tokens/sec → 1 token every 333.33ms
 		const bucket = new TokenBucket(3, 100);
 		bucket.consume(100); // drain
@@ -98,7 +98,7 @@ describe("TokenBucket", () => {
 		expect(remaining).toBe(30);
 	});
 
-	it("zero-count consume → always allowed", () => {
+	it('zero-count consume → always allowed', () => {
 		const bucket = new TokenBucket(10, 100);
 		bucket.consume(100); // drain
 		const result = bucket.consume(0);
@@ -108,7 +108,7 @@ describe("TokenBucket", () => {
 		expect(result.retryAfterSec).toBe(0);
 	});
 
-	it("negative count consume → treated as zero, always allowed", () => {
+	it('negative count consume → treated as zero, always allowed', () => {
 		const bucket = new TokenBucket(10, 100);
 		bucket.consume(50); // 50 remaining
 		const result = bucket.consume(-5);
@@ -128,15 +128,15 @@ describe("TokenBucket", () => {
 		expect(bucket.getRemaining()).toBe(50);
 	});
 
-	describe("drain()", () => {
-		it("sets tokens to 0", () => {
+	describe('drain()', () => {
+		it('sets tokens to 0', () => {
 			const bucket = new TokenBucket(10, 100);
 			expect(bucket.getRemaining()).toBe(100);
 			bucket.drain();
 			expect(bucket.getRemaining()).toBe(0);
 		});
 
-		it("drained bucket refills over time", () => {
+		it('drained bucket refills over time', () => {
 			const bucket = new TokenBucket(10, 100);
 			bucket.drain();
 			expect(bucket.getRemaining()).toBe(0);
@@ -146,20 +146,20 @@ describe("TokenBucket", () => {
 		});
 	});
 
-	describe("getSecondsUntilRefill()", () => {
-		it("returns 0 when tokens available", () => {
+	describe('getSecondsUntilRefill()', () => {
+		it('returns 0 when tokens available', () => {
 			const bucket = new TokenBucket(10, 100);
 			expect(bucket.getSecondsUntilRefill()).toBe(0);
 		});
 
-		it("returns correct seconds when empty", () => {
+		it('returns correct seconds when empty', () => {
 			const bucket = new TokenBucket(10, 100);
 			bucket.drain();
 			// Need 1 token, rate = 10/s → ceil(1/10) = 1s
 			expect(bucket.getSecondsUntilRefill()).toBe(1);
 		});
 
-		it("returns correct seconds when fractionally empty", () => {
+		it('returns correct seconds when fractionally empty', () => {
 			const bucket = new TokenBucket(10, 100);
 			bucket.consume(100); // drain to 0
 

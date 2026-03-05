@@ -85,7 +85,7 @@ Retrieve API references and limits from:
 | Category | Convention | Example |
 |---|---|---|
 | Files | `kebab-case.ts` | `token-bucket.ts` |
-| Classes | `PascalCase` | `PurgeRateLimiter`, `TokenBucket` |
+| Classes | `PascalCase` | `Gatekeeper`, `TokenBucket` |
 | Interfaces/Types | `PascalCase` | `PurgeBody`, `AuthResult` |
 | Functions | `camelCase` | `classifyPurge`, `resolveZoneId` |
 | Variables | `camelCase` | `cacheTtlMs`, `singleBucket` |
@@ -144,7 +144,7 @@ Retrieve API references and limits from:
 - Vitest with `describe()`/`it()` blocks. Test names use natural language with arrow notation: `"revoked key -> rejected"`.
 - `beforeAll` for one-time setup, `beforeEach`/`afterEach` for per-test state reset.
 - Worker integration tests use `SELF.fetch()` from `cloudflare:test`.
-- Durable Object tests obtain stubs via `env.PURGE_RATE_LIMITER.get(id)`.
+- Durable Object tests obtain stubs via `env.GATEKEEPER.get(id)`.
 - HTTP mocking: `fetchMock` from `cloudflare:test` with `fetchMock.activate()` in `beforeAll`.
 - Time-dependent tests: `vi.useFakeTimers()` / `vi.setSystemTime()` / `vi.advanceTimersByTime()`.
 - CLI tests mock `process.exit` via `vi.spyOn()`.

@@ -1,10 +1,20 @@
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { fetchMock } from 'cloudflare:test';
 import {
-	createCredential, buildClient, signedFetch, mockR2, getR2Origin,
-	s3WildcardPolicy, s3ReadOnlyPolicy, s3WriteOnlyPolicy, s3DeletePolicy,
-	s3MultipartPolicy, s3ExtensionPolicy, s3ContentTypePolicy,
-	s3MultiStatementPolicy, s3BucketAdminPolicy,
+	createCredential,
+	buildClient,
+	signedFetch,
+	mockR2,
+	getR2Origin,
+	s3WildcardPolicy,
+	s3ReadOnlyPolicy,
+	s3WriteOnlyPolicy,
+	s3DeletePolicy,
+	s3MultipartPolicy,
+	s3ExtensionPolicy,
+	s3ContentTypePolicy,
+	s3MultiStatementPolicy,
+	s3BucketAdminPolicy,
 } from './s3-helpers';
 
 describe('S3 proxy — IAM policy enforcement', () => {
@@ -104,10 +114,7 @@ describe('S3 proxy — IAM policy enforcement', () => {
 		const { accessKeyId, secretAccessKey } = await createCredential(s3DeletePolicy('del-bucket'));
 		const client = buildClient(accessKeyId, secretAccessKey);
 
-		fetchMock
-			.get(getR2Origin())
-			.intercept({ method: 'DELETE', path: '/del-bucket/file.txt' })
-			.reply(204, '');
+		fetchMock.get(getR2Origin()).intercept({ method: 'DELETE', path: '/del-bucket/file.txt' }).reply(204, '');
 
 		const res = await signedFetch(client, 'http://localhost/s3/del-bucket/file.txt', {
 			method: 'DELETE',
@@ -138,9 +145,7 @@ describe('S3 proxy — prefix-scoped policies', () => {
 	});
 
 	it('prefix write policy -> allows write within prefix', async () => {
-		const { accessKeyId, secretAccessKey } = await createCredential(
-			s3WriteOnlyPolicy('uploads', 'images/'),
-		);
+		const { accessKeyId, secretAccessKey } = await createCredential(s3WriteOnlyPolicy('uploads', 'images/'));
 		const client = buildClient(accessKeyId, secretAccessKey);
 
 		mockR2('PUT', '/uploads/images/photo.jpg', 200, '');
@@ -153,9 +158,7 @@ describe('S3 proxy — prefix-scoped policies', () => {
 	});
 
 	it('prefix write policy -> rejects write outside prefix', async () => {
-		const { accessKeyId, secretAccessKey } = await createCredential(
-			s3WriteOnlyPolicy('uploads', 'images/'),
-		);
+		const { accessKeyId, secretAccessKey } = await createCredential(s3WriteOnlyPolicy('uploads', 'images/'));
 		const client = buildClient(accessKeyId, secretAccessKey);
 
 		const res = await signedFetch(client, 'http://localhost/s3/uploads/docs/secret.pdf', {
@@ -166,9 +169,7 @@ describe('S3 proxy — prefix-scoped policies', () => {
 	});
 
 	it('prefix write policy -> rejects write to different bucket', async () => {
-		const { accessKeyId, secretAccessKey } = await createCredential(
-			s3WriteOnlyPolicy('uploads', 'images/'),
-		);
+		const { accessKeyId, secretAccessKey } = await createCredential(s3WriteOnlyPolicy('uploads', 'images/'));
 		const client = buildClient(accessKeyId, secretAccessKey);
 
 		const res = await signedFetch(client, 'http://localhost/s3/other-bucket/images/photo.jpg', {
@@ -190,9 +191,7 @@ describe('S3 proxy — extension-based policies', () => {
 	});
 
 	it('jpg-only policy -> allows .jpg upload', async () => {
-		const { accessKeyId, secretAccessKey } = await createCredential(
-			s3ExtensionPolicy('media', 'jpg'),
-		);
+		const { accessKeyId, secretAccessKey } = await createCredential(s3ExtensionPolicy('media', 'jpg'));
 		const client = buildClient(accessKeyId, secretAccessKey);
 
 		mockR2('PUT', '/media/photo.jpg', 200, '');
@@ -205,9 +204,7 @@ describe('S3 proxy — extension-based policies', () => {
 	});
 
 	it('jpg-only policy -> rejects .png upload', async () => {
-		const { accessKeyId, secretAccessKey } = await createCredential(
-			s3ExtensionPolicy('media', 'jpg'),
-		);
+		const { accessKeyId, secretAccessKey } = await createCredential(s3ExtensionPolicy('media', 'jpg'));
 		const client = buildClient(accessKeyId, secretAccessKey);
 
 		const res = await signedFetch(client, 'http://localhost/s3/media/photo.png', {
@@ -218,9 +215,7 @@ describe('S3 proxy — extension-based policies', () => {
 	});
 
 	it('jpg-only policy -> allows .jpg read', async () => {
-		const { accessKeyId, secretAccessKey } = await createCredential(
-			s3ExtensionPolicy('media', 'jpg'),
-		);
+		const { accessKeyId, secretAccessKey } = await createCredential(s3ExtensionPolicy('media', 'jpg'));
 		const client = buildClient(accessKeyId, secretAccessKey);
 
 		mockR2('GET', '/media/photo.jpg', 200, 'image data');
@@ -241,9 +236,7 @@ describe('S3 proxy — content-type policies', () => {
 	});
 
 	it('image/* content-type policy -> allows image/jpeg upload', async () => {
-		const { accessKeyId, secretAccessKey } = await createCredential(
-			s3ContentTypePolicy('media', 'image/'),
-		);
+		const { accessKeyId, secretAccessKey } = await createCredential(s3ContentTypePolicy('media', 'image/'));
 		const client = buildClient(accessKeyId, secretAccessKey);
 
 		mockR2('PUT', '/media/photo.jpg', 200, '');
@@ -257,9 +250,7 @@ describe('S3 proxy — content-type policies', () => {
 	});
 
 	it('image/* content-type policy -> rejects text/plain upload', async () => {
-		const { accessKeyId, secretAccessKey } = await createCredential(
-			s3ContentTypePolicy('media', 'image/'),
-		);
+		const { accessKeyId, secretAccessKey } = await createCredential(s3ContentTypePolicy('media', 'image/'));
 		const client = buildClient(accessKeyId, secretAccessKey);
 
 		const res = await signedFetch(client, 'http://localhost/s3/media/readme.txt', {
@@ -356,10 +347,7 @@ describe('S3 proxy — bucket admin policies', () => {
 		const { accessKeyId, secretAccessKey } = await createCredential(s3BucketAdminPolicy('admin-bucket'));
 		const client = buildClient(accessKeyId, secretAccessKey);
 
-		fetchMock
-			.get(getR2Origin())
-			.intercept({ method: 'HEAD', path: '/admin-bucket' })
-			.reply(200, '');
+		fetchMock.get(getR2Origin()).intercept({ method: 'HEAD', path: '/admin-bucket' }).reply(200, '');
 
 		const res = await signedFetch(client, 'http://localhost/s3/admin-bucket', { method: 'HEAD' });
 		expect(res.status).toBe(200);
@@ -481,8 +469,7 @@ describe('S3 proxy — CopyObject dual authorization', () => {
 		const { accessKeyId, secretAccessKey } = await createCredential(s3WildcardPolicy());
 		const client = buildClient(accessKeyId, secretAccessKey);
 
-		mockR2('PUT', '/dest-bucket/copy.txt', 200,
-			'<CopyObjectResult><ETag>"copy456"</ETag></CopyObjectResult>');
+		mockR2('PUT', '/dest-bucket/copy.txt', 200, '<CopyObjectResult><ETag>"copy456"</ETag></CopyObjectResult>');
 
 		const res = await signedFetch(client, 'http://localhost/s3/dest-bucket/copy.txt', {
 			method: 'PUT',
@@ -494,11 +481,13 @@ describe('S3 proxy — CopyObject dual authorization', () => {
 	it('write-only on dest -> rejects copy (needs read on source)', async () => {
 		const policy = {
 			version: '2025-01-01',
-			statements: [{
-				effect: 'allow',
-				actions: ['s3:PutObject'],
-				resources: ['object:dest-bucket/*'],
-			}],
+			statements: [
+				{
+					effect: 'allow',
+					actions: ['s3:PutObject'],
+					resources: ['object:dest-bucket/*'],
+				},
+			],
 		};
 		const { accessKeyId, secretAccessKey } = await createCredential(policy);
 		const client = buildClient(accessKeyId, secretAccessKey);

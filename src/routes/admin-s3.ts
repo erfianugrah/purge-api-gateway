@@ -26,30 +26,21 @@ adminS3App.post('/credentials', async (c) => {
 		log.status = 400;
 		log.error = 'invalid_json';
 		console.log(JSON.stringify(log));
-		return c.json(
-			{ success: false, errors: [{ code: 400, message: 'Invalid JSON body' }] },
-			400,
-		);
+		return c.json({ success: false, errors: [{ code: 400, message: 'Invalid JSON body' }] }, 400);
 	}
 
 	if (!raw.name || typeof raw.name !== 'string') {
 		log.status = 400;
 		log.error = 'missing_name';
 		console.log(JSON.stringify(log));
-		return c.json(
-			{ success: false, errors: [{ code: 400, message: 'Required field: name (string)' }] },
-			400,
-		);
+		return c.json({ success: false, errors: [{ code: 400, message: 'Required field: name (string)' }] }, 400);
 	}
 
 	if (!raw.policy || typeof raw.policy !== 'object') {
 		log.status = 400;
 		log.error = 'missing_policy';
 		console.log(JSON.stringify(log));
-		return c.json(
-			{ success: false, errors: [{ code: 400, message: 'Required field: policy (object with version + statements)' }] },
-			400,
-		);
+		return c.json({ success: false, errors: [{ code: 400, message: 'Required field: policy (object with version + statements)' }] }, 400);
 	}
 
 	const policyErrors = validatePolicy(raw.policy);
@@ -70,10 +61,11 @@ adminS3App.post('/credentials', async (c) => {
 		);
 	}
 
+	const identity = c.get('accessIdentity');
 	const req: CreateS3CredentialRequest = {
 		name: raw.name as string,
 		policy: raw.policy as PolicyDocument,
-		created_by: typeof raw.created_by === 'string' ? raw.created_by : undefined,
+		created_by: identity?.email ?? (typeof raw.created_by === 'string' ? raw.created_by : undefined),
 		expires_in_days: typeof raw.expires_in_days === 'number' ? raw.expires_in_days : undefined,
 	};
 
@@ -100,12 +92,14 @@ adminS3App.get('/credentials', async (c) => {
 	const stub = getStub(c.env);
 	const credentials = await stub.listS3Credentials(filter);
 
-	console.log(JSON.stringify({
-		route: 'admin.listS3Credentials',
-		filter: filter ?? 'all',
-		count: credentials.length,
-		ts: new Date().toISOString(),
-	}));
+	console.log(
+		JSON.stringify({
+			route: 'admin.listS3Credentials',
+			filter: filter ?? 'all',
+			count: credentials.length,
+			ts: new Date().toISOString(),
+		}),
+	);
 
 	return c.json({ success: true, result: credentials });
 });
@@ -118,10 +112,7 @@ adminS3App.get('/credentials/:id', async (c) => {
 	const result = await stub.getS3Credential(accessKeyId);
 
 	if (!result) {
-		return c.json(
-			{ success: false, errors: [{ code: 404, message: 'Credential not found' }] },
-			404,
-		);
+		return c.json({ success: false, errors: [{ code: 404, message: 'Credential not found' }] }, 404);
 	}
 
 	return c.json({ success: true, result });
@@ -135,26 +126,22 @@ adminS3App.delete('/credentials/:id', async (c) => {
 
 	const existing = await stub.getS3Credential(accessKeyId);
 	if (!existing) {
-		return c.json(
-			{ success: false, errors: [{ code: 404, message: 'Credential not found or already revoked' }] },
-			404,
-		);
+		return c.json({ success: false, errors: [{ code: 404, message: 'Credential not found or already revoked' }] }, 404);
 	}
 
 	const revoked = await stub.revokeS3Credential(accessKeyId);
 
-	console.log(JSON.stringify({
-		route: 'admin.revokeS3Credential',
-		accessKeyId,
-		revoked,
-		ts: new Date().toISOString(),
-	}));
+	console.log(
+		JSON.stringify({
+			route: 'admin.revokeS3Credential',
+			accessKeyId,
+			revoked,
+			ts: new Date().toISOString(),
+		}),
+	);
 
 	if (!revoked) {
-		return c.json(
-			{ success: false, errors: [{ code: 404, message: 'Credential not found or already revoked' }] },
-			404,
-		);
+		return c.json({ success: false, errors: [{ code: 404, message: 'Credential not found or already revoked' }] }, 404);
 	}
 
 	return c.json({ success: true, result: { revoked: true } });
@@ -164,10 +151,7 @@ adminS3App.delete('/credentials/:id', async (c) => {
 
 adminS3App.get('/analytics/events', async (c) => {
 	if (!c.env.ANALYTICS_DB) {
-		return c.json(
-			{ success: false, errors: [{ code: 503, message: 'Analytics not configured' }] },
-			503,
-		);
+		return c.json({ success: false, errors: [{ code: 503, message: 'Analytics not configured' }] }, 503);
 	}
 
 	const query: S3AnalyticsQuery = {
@@ -181,11 +165,13 @@ adminS3App.get('/analytics/events', async (c) => {
 
 	const events = await queryS3Events(c.env.ANALYTICS_DB, query);
 
-	console.log(JSON.stringify({
-		route: 'admin.s3Analytics.events',
-		count: events.length,
-		ts: new Date().toISOString(),
-	}));
+	console.log(
+		JSON.stringify({
+			route: 'admin.s3Analytics.events',
+			count: events.length,
+			ts: new Date().toISOString(),
+		}),
+	);
 
 	return c.json({ success: true, result: events });
 });
@@ -194,10 +180,7 @@ adminS3App.get('/analytics/events', async (c) => {
 
 adminS3App.get('/analytics/summary', async (c) => {
 	if (!c.env.ANALYTICS_DB) {
-		return c.json(
-			{ success: false, errors: [{ code: 503, message: 'Analytics not configured' }] },
-			503,
-		);
+		return c.json({ success: false, errors: [{ code: 503, message: 'Analytics not configured' }] }, 503);
 	}
 
 	const query: S3AnalyticsQuery = {
@@ -210,11 +193,13 @@ adminS3App.get('/analytics/summary', async (c) => {
 
 	const summary = await queryS3Summary(c.env.ANALYTICS_DB, query);
 
-	console.log(JSON.stringify({
-		route: 'admin.s3Analytics.summary',
-		totalRequests: summary.total_requests,
-		ts: new Date().toISOString(),
-	}));
+	console.log(
+		JSON.stringify({
+			route: 'admin.s3Analytics.summary',
+			totalRequests: summary.total_requests,
+			ts: new Date().toISOString(),
+		}),
+	);
 
 	return c.json({ success: true, result: summary });
 });

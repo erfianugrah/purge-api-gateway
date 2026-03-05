@@ -76,12 +76,7 @@ const STRIP_HEADERS = new Set([
  * @param bodyOverride - If provided, used instead of request.body (for cases where
  *   the body was already consumed, e.g. DeleteObjects XML parsing).
  */
-export async function forwardToR2(
-	request: Request,
-	s3Path: string,
-	env: Env,
-	bodyOverride?: string,
-): Promise<Response> {
+export async function forwardToR2(request: Request, s3Path: string, env: Env, bodyOverride?: string): Promise<Response> {
 	const client = getClient(env);
 
 	// Build the R2 URL: endpoint + path (without /s3 prefix)
@@ -112,7 +107,7 @@ export async function forwardToR2(
 		body = bodyOverride;
 	} else {
 		const hasBody = request.method !== 'GET' && request.method !== 'HEAD' && request.method !== 'DELETE';
-		body = hasBody ? request.body ?? undefined : undefined;
+		body = hasBody ? (request.body ?? undefined) : undefined;
 	}
 
 	// Sign and send

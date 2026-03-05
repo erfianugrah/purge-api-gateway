@@ -6,7 +6,7 @@
 export interface PurgeEvent {
 	key_id: string;
 	zone_id: string;
-	purge_type: "single" | "bulk";
+	purge_type: 'single' | 'bulk';
 	cost: number;
 	status: number;
 	collapsed: string | false;
@@ -41,11 +41,7 @@ ON purge_events (key_id, created_at DESC);
 `;
 
 async function ensureTables(db: D1Database): Promise<void> {
-	await db.batch([
-		db.prepare(CREATE_TABLE_SQL),
-		db.prepare(CREATE_INDEX_SQL),
-		db.prepare(CREATE_KEY_INDEX_SQL),
-	]);
+	await db.batch([db.prepare(CREATE_TABLE_SQL), db.prepare(CREATE_INDEX_SQL), db.prepare(CREATE_KEY_INDEX_SQL)]);
 }
 
 /**
@@ -73,7 +69,7 @@ export async function logPurgeEvent(db: D1Database, event: PurgeEvent): Promise<
 			.run();
 	} catch (e) {
 		// Fire-and-forget: log but don't crash the request
-		console.error(JSON.stringify({ error: "analytics_write_failed", detail: (e as Error).message }));
+		console.error(JSON.stringify({ error: 'analytics_write_failed', detail: (e as Error).message }));
 	}
 }
 
@@ -105,62 +101,59 @@ export interface AnalyticsSummary {
 /**
  * Query recent purge events.
  */
-export async function queryEvents(
-	db: D1Database,
-	query: AnalyticsQuery,
-): Promise<Record<string, unknown>[]> {
+export async function queryEvents(db: D1Database, query: AnalyticsQuery): Promise<Record<string, unknown>[]> {
 	await ensureTables(db);
 
-	const conditions: string[] = ["zone_id = ?"];
+	const conditions: string[] = ['zone_id = ?'];
 	const params: (string | number)[] = [query.zone_id];
 
 	if (query.key_id) {
-		conditions.push("key_id = ?");
+		conditions.push('key_id = ?');
 		params.push(query.key_id);
 	}
 	if (query.since) {
-		conditions.push("created_at >= ?");
+		conditions.push('created_at >= ?');
 		params.push(query.since);
 	}
 	if (query.until) {
-		conditions.push("created_at <= ?");
+		conditions.push('created_at <= ?');
 		params.push(query.until);
 	}
 
 	const limit = Math.min(query.limit ?? 100, 1000);
-	const sql = `SELECT * FROM purge_events WHERE ${conditions.join(" AND ")} ORDER BY created_at DESC LIMIT ?`;
+	const sql = `SELECT * FROM purge_events WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC LIMIT ?`;
 	params.push(limit);
 
-	const result = await db.prepare(sql).bind(...params).all();
+	const result = await db
+		.prepare(sql)
+		.bind(...params)
+		.all();
 	return result.results as Record<string, unknown>[];
 }
 
 /**
  * Get summary analytics for a zone.
  */
-export async function querySummary(
-	db: D1Database,
-	query: AnalyticsQuery,
-): Promise<AnalyticsSummary> {
+export async function querySummary(db: D1Database, query: AnalyticsQuery): Promise<AnalyticsSummary> {
 	await ensureTables(db);
 
-	const conditions: string[] = ["zone_id = ?"];
+	const conditions: string[] = ['zone_id = ?'];
 	const params: (string | number)[] = [query.zone_id];
 
 	if (query.key_id) {
-		conditions.push("key_id = ?");
+		conditions.push('key_id = ?');
 		params.push(query.key_id);
 	}
 	if (query.since) {
-		conditions.push("created_at >= ?");
+		conditions.push('created_at >= ?');
 		params.push(query.since);
 	}
 	if (query.until) {
-		conditions.push("created_at <= ?");
+		conditions.push('created_at <= ?');
 		params.push(query.until);
 	}
 
-	const where = conditions.join(" AND ");
+	const where = conditions.join(' AND ');
 
 	const [totalRow, statusRows, typeRows, collapsedRow, durationRow] = await db.batch([
 		db.prepare(`SELECT COUNT(*) as cnt, SUM(cost) as total_urls_purged FROM purge_events WHERE ${where}`).bind(...params),
