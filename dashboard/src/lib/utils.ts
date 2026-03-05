@@ -21,6 +21,26 @@ export const PURGE_TYPE_COLORS = {
 	bulk: "#79e6f3", // cyan — bulk purge
 } as const;
 
+// S3 operation category colors
+export const S3_OP_COLORS = {
+	read: "#5adecd", // green — GetObject, HeadObject, etc.
+	write: "#c574dd", // purple — PutObject, DeleteObject, etc.
+	list: "#79e6f3", // cyan — ListBuckets, ListObjectsV2, etc.
+	other: "#8796f4", // blue — everything else
+} as const;
+
+// Palette for pie/bar chart series (cycles for arbitrary-length data)
+export const CHART_PALETTE = [
+	"#5adecd",
+	"#c574dd",
+	"#79e6f3",
+	"#f1a171",
+	"#8796f4",
+	"#f37e96",
+	"#ffd866",
+	"#ff4870",
+] as const;
+
 // Shared chart tooltip styling (Lovelace theme)
 export const CHART_TOOLTIP_STYLE = {
 	contentStyle: {

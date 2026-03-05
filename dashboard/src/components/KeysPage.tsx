@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
 	Plus,
 	ShieldOff,
@@ -50,48 +50,53 @@ function formatDate(epoch: number): string {
 // ─── Create Key Dialog ──────────────────────────────────────────────
 
 interface CreateKeyDialogProps {
-	zoneId: string;
 	onCreated: (secret: string) => void;
 }
 
-function makeDefaultPolicy(zoneId: string): PolicyDocument {
+function makeDefaultPolicy(): PolicyDocument {
 	return {
 		version: "2025-01-01",
 		statements: [
 			{
 				effect: "allow",
 				actions: ["purge:*"],
-				resources: [zoneId ? `zone:${zoneId}` : "*"],
+				resources: ["*"],
 			},
 		],
 	};
 }
 
-function CreateKeyDialog({ zoneId, onCreated }: CreateKeyDialogProps) {
+function CreateKeyDialog({ onCreated }: CreateKeyDialogProps) {
 	const [open, setOpen] = useState(false);
 	const [name, setName] = useState("");
-	const [policy, setPolicy] = useState<PolicyDocument>(() => makeDefaultPolicy(zoneId));
+	const [zoneId, setZoneId] = useState("");
+	const [policy, setPolicy] = useState<PolicyDocument>(() => makeDefaultPolicy());
 	const [creating, setCreating] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
 	const handleCreate = async () => {
 		setError(null);
+		if (!zoneId.trim()) {
+			setError("Zone ID is required");
+			return;
+		}
 		if (policy.statements.length === 0) {
 			setError("Policy must have at least one statement");
 			return;
 		}
-		if (policy.statements.some((s) => s.actions.length === 0)) {
+		if (policy.statements.some((s: any) => s.actions.length === 0)) {
 			setError("Each statement must have at least one action");
 			return;
 		}
 
 		setCreating(true);
 		try {
-			const result = await createKey({ name, zone_id: zoneId, policy });
+			const result = await createKey({ name, zone_id: zoneId.trim(), policy });
 			onCreated(result.key.id);
 			setOpen(false);
 			setName("");
-			setPolicy(makeDefaultPolicy(zoneId));
+			setZoneId("");
+			setPolicy(makeDefaultPolicy());
 		} catch (e: any) {
 			setError(e.message ?? "Failed to create key");
 		} finally {
@@ -99,9 +104,8 @@ function CreateKeyDialog({ zoneId, onCreated }: CreateKeyDialogProps) {
 		}
 	};
 
-	// Reset policy when zone changes
 	const handleOpenChange = (next: boolean) => {
-		if (next) setPolicy(makeDefaultPolicy(zoneId));
+		if (next) setPolicy(makeDefaultPolicy());
 		setOpen(next);
 		setError(null);
 	};
@@ -109,7 +113,7 @@ function CreateKeyDialog({ zoneId, onCreated }: CreateKeyDialogProps) {
 	return (
 		<Dialog open={open} onOpenChange={handleOpenChange}>
 			<DialogTrigger asChild>
-				<Button size="sm" disabled={!zoneId}>
+				<Button size="sm">
 					<Plus className="h-4 w-4" />
 					Create Key
 				</Button>
@@ -118,7 +122,7 @@ function CreateKeyDialog({ zoneId, onCreated }: CreateKeyDialogProps) {
 				<DialogHeader>
 					<DialogTitle>Create API Key</DialogTitle>
 					<DialogDescription>
-						Create a new API key for zone <span className="font-data text-lv-cyan">{truncateId(zoneId, 16)}</span>.
+						Create a new purge API key scoped to a specific zone.
 					</DialogDescription>
 				</DialogHeader>
 
@@ -128,13 +132,23 @@ function CreateKeyDialog({ zoneId, onCreated }: CreateKeyDialogProps) {
 						<Input
 							placeholder="e.g. deploy-bot"
 							value={name}
-							onChange={(e) => setName(e.target.value)}
+							onChange={(e: any) => setName(e.target.value)}
+						/>
+					</div>
+
+					<div className="space-y-2">
+						<Label className={T.formLabel}>Zone ID</Label>
+						<Input
+							placeholder="e.g. a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
+							value={zoneId}
+							onChange={(e: any) => setZoneId(e.target.value)}
+							className="font-data"
 						/>
 					</div>
 
 					<div className="space-y-2">
 						<Label className={T.formLabel}>Policy</Label>
-						<PolicyBuilder zoneId={zoneId} value={policy} onChange={setPolicy} />
+						<PolicyBuilder zoneId={zoneId || "*"} value={policy} onChange={setPolicy} />
 					</div>
 
 					{error && (
@@ -146,7 +160,7 @@ function CreateKeyDialog({ zoneId, onCreated }: CreateKeyDialogProps) {
 					<Button variant="outline" onClick={() => setOpen(false)}>
 						Cancel
 					</Button>
-					<Button onClick={handleCreate} disabled={creating || !name.trim()}>
+					<Button onClick={handleCreate} disabled={creating || !name.trim() || !zoneId.trim()}>
 						{creating && <Loader2 className="h-4 w-4 animate-spin" />}
 						Create
 					</Button>
@@ -202,21 +216,17 @@ function KeysTableSkeleton() {
 // ─── Keys Page ──────────────────────────────────────────────────────
 
 export function KeysPage() {
-	const [inputValue, setInputValue] = useState("");
-	const [zoneId, setZoneId] = useState("");
 	const [keys, setKeys] = useState<ApiKey[]>([]);
-	const [loading, setLoading] = useState(false);
+	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 	const [secret, setSecret] = useState<string | null>(null);
 	const [revokingId, setRevokingId] = useState<string | null>(null);
 
-	const fetchKeys = useCallback(async (zone: string) => {
-		if (!zone.trim()) return;
-		setZoneId(zone.trim());
+	const fetchKeys = useCallback(async () => {
 		setLoading(true);
 		setError(null);
 		try {
-			const data = await listKeys(zone.trim());
+			const data = await listKeys();
 			setKeys(data);
 		} catch (e: any) {
 			setError(e.message ?? "Failed to load keys");
@@ -226,17 +236,16 @@ export function KeysPage() {
 		}
 	}, []);
 
-	const handleSubmit = () => fetchKeys(inputValue);
-	const handleKeyDown = (e: React.KeyboardEvent) => {
-		if (e.key === "Enter") fetchKeys(inputValue);
-	};
+	useEffect(() => {
+		fetchKeys();
+	}, [fetchKeys]);
 
 	const handleRevoke = async (keyId: string) => {
 		if (!confirm(`Revoke key ${truncateId(keyId)}? This cannot be undone.`)) return;
 		setRevokingId(keyId);
 		try {
-			await revokeKey(keyId, zoneId);
-			await fetchKeys(zoneId);
+			await revokeKey(keyId);
+			await fetchKeys();
 		} catch (e: any) {
 			setError(e.message ?? "Failed to revoke key");
 		} finally {
@@ -246,25 +255,15 @@ export function KeysPage() {
 
 	const handleKeyCreated = (newSecret: string) => {
 		setSecret(newSecret);
-		fetchKeys(zoneId);
+		fetchKeys();
 	};
 
 	return (
 		<div className="space-y-6">
-			{/* ── Zone ID input ──────────────────────────────────────── */}
+			{/* ── Header ─────────────────────────────────────────────── */}
 			<div className="flex items-center gap-3">
-				<Input
-					placeholder="Enter Zone ID..."
-					value={inputValue}
-					onChange={(e) => setInputValue(e.target.value)}
-					onKeyDown={handleKeyDown}
-					className="max-w-sm font-data"
-				/>
-				<Button onClick={handleSubmit} disabled={loading || !inputValue.trim()}>
-					{loading ? "Loading..." : "Load"}
-				</Button>
 				<div className="ml-auto">
-					<CreateKeyDialog zoneId={zoneId} onCreated={handleKeyCreated} />
+					<CreateKeyDialog onCreated={handleKeyCreated} />
 				</div>
 			</div>
 
@@ -282,16 +281,9 @@ export function KeysPage() {
 			{loading && <KeysTableSkeleton />}
 
 			{/* ── Empty state ────────────────────────────────────────── */}
-			{!loading && zoneId && keys.length === 0 && !error && (
+			{!loading && keys.length === 0 && !error && (
 				<div className="flex h-48 items-center justify-center">
-					<p className={T.mutedSm}>No keys found for this zone.</p>
-				</div>
-			)}
-
-			{/* ── No zone ────────────────────────────────────────────── */}
-			{!loading && !zoneId && !error && (
-				<div className="flex h-48 items-center justify-center">
-					<p className={T.mutedSm}>Enter a Zone ID to manage API keys.</p>
+					<p className={T.mutedSm}>No API keys found. Create one to get started.</p>
 				</div>
 			)}
 
@@ -309,6 +301,7 @@ export function KeysPage() {
 								<TableRow>
 									<TableHead className={T.sectionLabel}>Name</TableHead>
 									<TableHead className={T.sectionLabel}>ID</TableHead>
+									<TableHead className={T.sectionLabel}>Zone</TableHead>
 									<TableHead className={T.sectionLabel}>Status</TableHead>
 									<TableHead className={T.sectionLabel}>Created</TableHead>
 									<TableHead className={T.sectionLabel}>Expires</TableHead>
@@ -323,6 +316,11 @@ export function KeysPage() {
 										<TableCell>
 											<code className={T.tableCellMono} title={k.id}>
 												{truncateId(k.id)}
+											</code>
+										</TableCell>
+										<TableCell>
+											<code className={T.tableCellMono} title={k.zone_id}>
+												{truncateId(k.zone_id, 8)}
 											</code>
 										</TableCell>
 										<TableCell>

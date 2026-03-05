@@ -195,10 +195,13 @@ describe('Admin — edge cases', () => {
 		expect(data.result.key.revoked).toBe(0);
 	});
 
-	it('list keys requires zone_id', async () => {
+	it('list keys without zone_id -> returns all keys', async () => {
 		const res = await SELF.fetch('http://localhost/admin/keys', {
 			headers: adminHeaders(),
 		});
-		expect(res.status).toBe(400);
+		expect(res.status).toBe(200);
+		const data = await res.json<any>();
+		expect(data.success).toBe(true);
+		expect(Array.isArray(data.result)).toBe(true);
 	});
 });

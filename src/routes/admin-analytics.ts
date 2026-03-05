@@ -10,17 +10,12 @@ export const adminAnalyticsApp = new Hono<HonoEnv>();
 // ─── Events ─────────────────────────────────────────────────────────────────
 
 adminAnalyticsApp.get('/events', async (c) => {
-	const zoneId = c.req.query('zone_id');
-	if (!zoneId) {
-		return c.json({ success: false, errors: [{ code: 400, message: 'zone_id query param required' }] }, 400);
-	}
-
 	if (!c.env.ANALYTICS_DB) {
 		return c.json({ success: false, errors: [{ code: 503, message: 'Analytics not configured' }] }, 503);
 	}
 
 	const query: AnalyticsQuery = {
-		zone_id: zoneId,
+		zone_id: c.req.query('zone_id') || undefined,
 		key_id: c.req.query('key_id') || undefined,
 		since: c.req.query('since') ? Number(c.req.query('since')) : undefined,
 		until: c.req.query('until') ? Number(c.req.query('until')) : undefined,
@@ -32,7 +27,7 @@ adminAnalyticsApp.get('/events', async (c) => {
 	console.log(
 		JSON.stringify({
 			route: 'admin.analytics.events',
-			zoneId,
+			zoneId: query.zone_id ?? 'all',
 			count: events.length,
 			ts: new Date().toISOString(),
 		}),
@@ -44,17 +39,12 @@ adminAnalyticsApp.get('/events', async (c) => {
 // ─── Summary ────────────────────────────────────────────────────────────────
 
 adminAnalyticsApp.get('/summary', async (c) => {
-	const zoneId = c.req.query('zone_id');
-	if (!zoneId) {
-		return c.json({ success: false, errors: [{ code: 400, message: 'zone_id query param required' }] }, 400);
-	}
-
 	if (!c.env.ANALYTICS_DB) {
 		return c.json({ success: false, errors: [{ code: 503, message: 'Analytics not configured' }] }, 503);
 	}
 
 	const query: AnalyticsQuery = {
-		zone_id: zoneId,
+		zone_id: c.req.query('zone_id') || undefined,
 		key_id: c.req.query('key_id') || undefined,
 		since: c.req.query('since') ? Number(c.req.query('since')) : undefined,
 		until: c.req.query('until') ? Number(c.req.query('until')) : undefined,
@@ -65,7 +55,7 @@ adminAnalyticsApp.get('/summary', async (c) => {
 	console.log(
 		JSON.stringify({
 			route: 'admin.analytics.summary',
-			zoneId,
+			zoneId: query.zone_id ?? 'all',
 			totalRequests: summary.total_requests,
 			ts: new Date().toISOString(),
 		}),

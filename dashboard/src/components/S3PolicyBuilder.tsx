@@ -695,6 +695,7 @@ export function S3PolicyBuilder({ value, onChange }: S3PolicyBuilderProps) {
 					<Plus className="h-3 w-3 mr-1" />
 					Add Statement
 				</Button>
+				<ImportAwsDialog onImport={onChange} />
 				<Button
 					type="button"
 					variant="ghost"

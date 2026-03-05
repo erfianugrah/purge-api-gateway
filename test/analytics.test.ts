@@ -28,22 +28,24 @@ afterEach(() => {
 // --- Tests ---
 
 describe('Analytics — validation', () => {
-	it('events endpoint requires zone_id', async () => {
+	it('events endpoint without zone_id -> returns all events', async () => {
 		const res = await SELF.fetch('http://localhost/admin/analytics/events', {
 			headers: adminHeaders(),
 		});
-		expect(res.status).toBe(400);
+		expect(res.status).toBe(200);
 		const data = await res.json<any>();
-		expect(data.errors[0].message).toMatch(/zone_id/i);
+		expect(data.success).toBe(true);
+		expect(Array.isArray(data.result)).toBe(true);
 	});
 
-	it('summary endpoint requires zone_id', async () => {
+	it('summary endpoint without zone_id -> returns aggregate summary', async () => {
 		const res = await SELF.fetch('http://localhost/admin/analytics/summary', {
 			headers: adminHeaders(),
 		});
-		expect(res.status).toBe(400);
+		expect(res.status).toBe(200);
 		const data = await res.json<any>();
-		expect(data.errors[0].message).toMatch(/zone_id/i);
+		expect(data.success).toBe(true);
+		expect(data.result).toBeDefined();
 	});
 
 	it('analytics endpoints require admin key', async () => {

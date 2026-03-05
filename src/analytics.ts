@@ -82,7 +82,7 @@ export async function deleteOldEvents(db: D1Database, retentionDays: number): Pr
 }
 
 export interface AnalyticsQuery {
-	zone_id: string;
+	zone_id?: string;
 	key_id?: string;
 	since?: number; // unix ms
 	until?: number; // unix ms
@@ -104,9 +104,13 @@ export interface AnalyticsSummary {
 export async function queryEvents(db: D1Database, query: AnalyticsQuery): Promise<Record<string, unknown>[]> {
 	await ensureTables(db);
 
-	const conditions: string[] = ['zone_id = ?'];
-	const params: (string | number)[] = [query.zone_id];
+	const conditions: string[] = [];
+	const params: (string | number)[] = [];
 
+	if (query.zone_id) {
+		conditions.push('zone_id = ?');
+		params.push(query.zone_id);
+	}
 	if (query.key_id) {
 		conditions.push('key_id = ?');
 		params.push(query.key_id);
@@ -121,7 +125,8 @@ export async function queryEvents(db: D1Database, query: AnalyticsQuery): Promis
 	}
 
 	const limit = Math.min(query.limit ?? 100, 1000);
-	const sql = `SELECT * FROM purge_events WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC LIMIT ?`;
+	const where = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '';
+	const sql = `SELECT * FROM purge_events${where} ORDER BY created_at DESC LIMIT ?`;
 	params.push(limit);
 
 	const result = await db
@@ -137,9 +142,13 @@ export async function queryEvents(db: D1Database, query: AnalyticsQuery): Promis
 export async function querySummary(db: D1Database, query: AnalyticsQuery): Promise<AnalyticsSummary> {
 	await ensureTables(db);
 
-	const conditions: string[] = ['zone_id = ?'];
-	const params: (string | number)[] = [query.zone_id];
+	const conditions: string[] = [];
+	const params: (string | number)[] = [];
 
+	if (query.zone_id) {
+		conditions.push('zone_id = ?');
+		params.push(query.zone_id);
+	}
 	if (query.key_id) {
 		conditions.push('key_id = ?');
 		params.push(query.key_id);
@@ -153,7 +162,7 @@ export async function querySummary(db: D1Database, query: AnalyticsQuery): Promi
 		params.push(query.until);
 	}
 
-	const where = conditions.join(' AND ');
+	const where = conditions.length > 0 ? conditions.join(' AND ') : '1=1';
 
 	const [totalRow, statusRows, typeRows, collapsedRow, durationRow] = await db.batch([
 		db.prepare(`SELECT COUNT(*) as cnt, SUM(cost) as total_urls_purged FROM purge_events WHERE ${where}`).bind(...params),

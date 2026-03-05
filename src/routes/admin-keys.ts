@@ -103,10 +103,7 @@ adminKeysApp.post('/', async (c) => {
 // ─── List keys ──────────────────────────────────────────────────────────────
 
 adminKeysApp.get('/', async (c) => {
-	const zoneId = c.req.query('zone_id');
-	if (!zoneId) {
-		return c.json({ success: false, errors: [{ code: 400, message: 'zone_id query param required' }] }, 400);
-	}
+	const zoneId = c.req.query('zone_id') || undefined;
 
 	const statusFilter = c.req.query('status') as 'active' | 'revoked' | undefined;
 	const validFilters = ['active', 'revoked'];
@@ -118,7 +115,7 @@ adminKeysApp.get('/', async (c) => {
 	console.log(
 		JSON.stringify({
 			route: 'admin.listKeys',
-			zoneId,
+			zoneId: zoneId ?? 'all',
 			filter: filter ?? 'all',
 			count: keys.length,
 			ts: new Date().toISOString(),
@@ -131,16 +128,12 @@ adminKeysApp.get('/', async (c) => {
 // ─── Get key ────────────────────────────────────────────────────────────────
 
 adminKeysApp.get('/:id', async (c) => {
-	const zoneId = c.req.query('zone_id');
-	if (!zoneId) {
-		return c.json({ success: false, errors: [{ code: 400, message: 'zone_id query param required' }] }, 400);
-	}
-
+	const zoneId = c.req.query('zone_id') || undefined;
 	const keyId = c.req.param('id');
 	const stub = getStub(c.env);
 	const result = await stub.getKey(keyId);
 
-	if (!result || result.key.zone_id !== zoneId) {
+	if (!result || (zoneId && result.key.zone_id !== zoneId)) {
 		return c.json({ success: false, errors: [{ code: 404, message: 'Key not found' }] }, 404);
 	}
 
@@ -150,16 +143,12 @@ adminKeysApp.get('/:id', async (c) => {
 // ─── Revoke key ─────────────────────────────────────────────────────────────
 
 adminKeysApp.delete('/:id', async (c) => {
-	const zoneId = c.req.query('zone_id');
-	if (!zoneId) {
-		return c.json({ success: false, errors: [{ code: 400, message: 'zone_id query param required' }] }, 400);
-	}
-
+	const zoneId = c.req.query('zone_id') || undefined;
 	const keyId = c.req.param('id');
 	const stub = getStub(c.env);
 
 	const existing = await stub.getKey(keyId);
-	if (!existing || existing.key.zone_id !== zoneId) {
+	if (!existing || (zoneId && existing.key.zone_id !== zoneId)) {
 		return c.json({ success: false, errors: [{ code: 404, message: 'Key not found or already revoked' }] }, 404);
 	}
 
@@ -167,7 +156,7 @@ adminKeysApp.delete('/:id', async (c) => {
 
 	const log: Record<string, unknown> = {
 		route: 'admin.revokeKey',
-		zoneId,
+		zoneId: existing.key.zone_id,
 		keyId: keyId.slice(0, 12) + '...',
 		revoked,
 		ts: new Date().toISOString(),
