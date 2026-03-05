@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { SELF, fetchMock } from 'cloudflare:test';
-import { createCredential, buildClient, signedFetch, mockR2, s3WildcardPolicy } from './s3-helpers';
+import { createCredential, buildClient, signedFetch, mockR2, registerUpstreamR2, s3WildcardPolicy } from './s3-helpers';
 import { adminHeaders } from './helpers';
 
 describe('S3 proxy — credential lifecycle via admin API', () => {
-	beforeAll(() => {
+	beforeAll(async () => {
 		fetchMock.activate();
 		fetchMock.disableNetConnect();
+		await registerUpstreamR2();
 	});
 
 	afterEach(() => {
@@ -121,9 +122,10 @@ describe('S3 proxy — credential lifecycle via admin API', () => {
 });
 
 describe('S3 proxy — S3 analytics', () => {
-	beforeAll(() => {
+	beforeAll(async () => {
 		fetchMock.activate();
 		fetchMock.disableNetConnect();
+		await registerUpstreamR2();
 	});
 
 	afterEach(() => {

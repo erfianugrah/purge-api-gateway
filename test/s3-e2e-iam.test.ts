@@ -15,12 +15,14 @@ import {
 	s3ContentTypePolicy,
 	s3MultiStatementPolicy,
 	s3BucketAdminPolicy,
+	registerUpstreamR2,
 } from './s3-helpers';
 
 describe('S3 proxy — IAM policy enforcement', () => {
-	beforeAll(() => {
+	beforeAll(async () => {
 		fetchMock.activate();
 		fetchMock.disableNetConnect();
+		await registerUpstreamR2();
 	});
 
 	afterEach(() => {
@@ -135,9 +137,10 @@ describe('S3 proxy — IAM policy enforcement', () => {
 });
 
 describe('S3 proxy — prefix-scoped policies', () => {
-	beforeAll(() => {
+	beforeAll(async () => {
 		fetchMock.activate();
 		fetchMock.disableNetConnect();
+		await registerUpstreamR2();
 	});
 
 	afterEach(() => {
@@ -181,9 +184,10 @@ describe('S3 proxy — prefix-scoped policies', () => {
 });
 
 describe('S3 proxy — extension-based policies', () => {
-	beforeAll(() => {
+	beforeAll(async () => {
 		fetchMock.activate();
 		fetchMock.disableNetConnect();
+		await registerUpstreamR2();
 	});
 
 	afterEach(() => {
@@ -226,9 +230,10 @@ describe('S3 proxy — extension-based policies', () => {
 });
 
 describe('S3 proxy — content-type policies', () => {
-	beforeAll(() => {
+	beforeAll(async () => {
 		fetchMock.activate();
 		fetchMock.disableNetConnect();
+		await registerUpstreamR2();
 	});
 
 	afterEach(() => {
@@ -263,9 +268,10 @@ describe('S3 proxy — content-type policies', () => {
 });
 
 describe('S3 proxy — multi-statement policies', () => {
-	beforeAll(() => {
+	beforeAll(async () => {
 		fetchMock.activate();
 		fetchMock.disableNetConnect();
+		await registerUpstreamR2();
 	});
 
 	afterEach(() => {
@@ -334,9 +340,10 @@ describe('S3 proxy — multi-statement policies', () => {
 });
 
 describe('S3 proxy — bucket admin policies', () => {
-	beforeAll(() => {
+	beforeAll(async () => {
 		fetchMock.activate();
 		fetchMock.disableNetConnect();
+		await registerUpstreamR2();
 	});
 
 	afterEach(() => {
@@ -384,9 +391,10 @@ describe('S3 proxy — bucket admin policies', () => {
 });
 
 describe('S3 proxy — multipart with scoped policies', () => {
-	beforeAll(() => {
+	beforeAll(async () => {
 		fetchMock.activate();
 		fetchMock.disableNetConnect();
+		await registerUpstreamR2();
 	});
 
 	afterEach(() => {
@@ -456,9 +464,10 @@ describe('S3 proxy — multipart with scoped policies', () => {
 });
 
 describe('S3 proxy — CopyObject dual authorization', () => {
-	beforeAll(() => {
+	beforeAll(async () => {
 		fetchMock.activate();
 		fetchMock.disableNetConnect();
+		await registerUpstreamR2();
 	});
 
 	afterEach(() => {

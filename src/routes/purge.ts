@@ -87,6 +87,16 @@ purgeRoute.post('/v1/zones/:zoneId/purge_cache', async (c) => {
 
 	const stub = getStub(env);
 
+	// Resolve upstream CF API token for this zone
+	const upstreamToken = await stub.resolveUpstreamToken(zoneId);
+	if (!upstreamToken) {
+		log.status = 502;
+		log.error = 'no_upstream_token';
+		log.durationMs = Date.now() - start;
+		console.log(JSON.stringify(log));
+		return c.json({ success: false, errors: [{ code: 502, message: `No upstream API token registered for zone ${zoneId}` }] }, 502);
+	}
+
 	// Full policy authorization (always per-request, never collapsed)
 	const authResult = await stub.authorizeFromBody(keyId, zoneId, body);
 	if (!authResult.authorized) {
@@ -120,10 +130,10 @@ purgeRoute.post('/v1/zones/:zoneId/purge_cache', async (c) => {
 			collapsedAtIsolate = true;
 		} catch {
 			inflightIsolate.delete(collapseKey);
-			result = await createAndTrackFlight(collapseKey, stub, zoneId, bodyText, parsed, env, keyId);
+			result = await createAndTrackFlight(collapseKey, stub, zoneId, bodyText, parsed, upstreamToken, keyId);
 		}
 	} else {
-		result = await createAndTrackFlight(collapseKey, stub, zoneId, bodyText, parsed, env, keyId);
+		result = await createAndTrackFlight(collapseKey, stub, zoneId, bodyText, parsed, upstreamToken, keyId);
 	}
 
 	// Determine collapse level for logging
@@ -172,10 +182,10 @@ function createAndTrackFlight(
 	zoneId: string,
 	bodyText: string,
 	parsed: ParsedPurgeRequest,
-	env: Env,
+	upstreamToken: string,
 	keyId?: string,
 ): Promise<PurgeResult> {
-	const promise = stub.purge(zoneId, bodyText, parsed.type, parsed.cost, env.UPSTREAM_API_TOKEN, keyId);
+	const promise = stub.purge(zoneId, bodyText, parsed.type, parsed.cost, upstreamToken, keyId);
 
 	inflightIsolate.set(collapseKey, promise);
 	promise.finally(() => {

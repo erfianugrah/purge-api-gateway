@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ─── Smoke test suite for gatekeeper ──────────────────────────────────────────
 # Requires: curl, jq, wrangler dev running on $BASE (default http://localhost:8787)
-# Reads secrets from .dev.vars
+# Reads ADMIN_KEY from .dev.vars, CF_API_TOKEN from env or .env
 # Usage:
 #   npm run dev &          # start wrangler dev
 #   ./smoke-test.sh        # run all tests
@@ -16,16 +16,26 @@ PASS=0
 FAIL=0
 ERRORS=()
 
-# Read secrets from .dev.vars
+# Read ADMIN_KEY from .dev.vars
 if [[ ! -f .dev.vars ]]; then
-	echo "ERROR: .dev.vars not found. Create it with ADMIN_KEY and UPSTREAM_API_TOKEN."
+	echo "ERROR: .dev.vars not found. Create it with ADMIN_KEY."
 	exit 1
 fi
 ADMIN_KEY=$(grep '^ADMIN_KEY=' .dev.vars | cut -d= -f2-)
-UPSTREAM_TOKEN=$(grep '^UPSTREAM_API_TOKEN=' .dev.vars | cut -d= -f2-)
 
-if [[ -z "$ADMIN_KEY" || -z "$UPSTREAM_TOKEN" ]]; then
-	echo "ERROR: ADMIN_KEY or UPSTREAM_API_TOKEN missing from .dev.vars"
+if [[ -z "$ADMIN_KEY" ]]; then
+	echo "ERROR: ADMIN_KEY missing from .dev.vars"
+	exit 1
+fi
+
+# CF API token — needed to look up zone ID and to register as upstream.
+# Reads from CF_API_TOKEN env var, falls back to UPSTREAM_PURGE_KEY in .env.
+CF_API_TOKEN="${CF_API_TOKEN:-}"
+if [[ -z "$CF_API_TOKEN" && -f .env ]]; then
+	CF_API_TOKEN=$(grep '^UPSTREAM_PURGE_KEY=' .env | cut -d= -f2- || true)
+fi
+if [[ -z "$CF_API_TOKEN" ]]; then
+	echo "ERROR: Set CF_API_TOKEN env var or UPSTREAM_PURGE_KEY in .env"
 	exit 1
 fi
 
@@ -132,13 +142,27 @@ fi
 
 # Get erfi.io zone ID from Cloudflare API
 ZONE=$(curl -s "https://api.cloudflare.com/client/v4/zones?name=erfi.io" \
-	-H "Authorization: Bearer $UPSTREAM_TOKEN" | jq -r '.result[0].id')
+	-H "Authorization: Bearer $CF_API_TOKEN" | jq -r '.result[0].id')
 
 if [[ -z "$ZONE" || "$ZONE" == "null" ]]; then
 	echo "ERROR: Could not resolve zone ID for erfi.io"
 	exit 1
 fi
 echo "Zone: $ZONE (erfi.io)"
+
+# Register CF API token as upstream token for purge
+echo "Registering upstream token..."
+UPSTREAM_REG=$(curl -s -X POST "${BASE}/admin/upstream-tokens" \
+	-H "X-Admin-Key: $ADMIN_KEY" \
+	-H "Content-Type: application/json" \
+	-d "{\"name\":\"smoke-test-token\",\"token\":\"$CF_API_TOKEN\",\"zone_ids\":[\"$ZONE\"]}")
+UPSTREAM_OK=$(echo "$UPSTREAM_REG" | jq -r '.success')
+if [[ "$UPSTREAM_OK" != "true" ]]; then
+	echo "ERROR: Failed to register upstream token: $(echo "$UPSTREAM_REG" | jq -r '.errors[0].message // "unknown"')"
+	exit 1
+fi
+UPSTREAM_TOKEN_ID=$(echo "$UPSTREAM_REG" | jq -r '.result.id')
+echo "Upstream token: $UPSTREAM_TOKEN_ID"
 
 PURGE_URL="/v1/zones/$ZONE/purge_cache"
 
@@ -591,6 +615,15 @@ assert_status "unknown zone sub-route -> 404" 404
 
 request GET "/admin/nonexistent" "X-Admin-Key: $ADMIN_KEY"
 assert_status "unknown /admin/ route -> 404" 404
+
+# ─── Cleanup ─────────────────────────────────────────────────────────────────
+
+section "Cleanup"
+
+# Revoke the upstream token registered at the start
+curl -s -X DELETE "${BASE}/admin/upstream-tokens/${UPSTREAM_TOKEN_ID}" \
+	-H "X-Admin-Key: $ADMIN_KEY" >/dev/null 2>&1
+printf "  Revoked upstream token %s\n" "$UPSTREAM_TOKEN_ID"
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 

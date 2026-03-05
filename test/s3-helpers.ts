@@ -7,12 +7,31 @@ import { env, SELF, fetchMock } from 'cloudflare:test';
 import { AwsClient } from 'aws4fetch';
 import { adminHeaders } from './helpers';
 
-// ─── R2 origin ──────────────────────────────────────────────────────────────
+// ─── R2 upstream constants ──────────────────────────────────────────────────
+
+export const R2_TEST_ENDPOINT = 'https://facefacefacefacefacefacefaceface.r2.cloudflarestorage.com';
+export const R2_TEST_ACCESS_KEY = 'ebd50f0dc5491e61ad0cd72030a8f314';
+export const R2_TEST_SECRET_KEY = 'baeace5387c23acf0ad2b582a808a13073e9a09acdf0b54742420229461640f4';
 
 export function getR2Origin(): string {
-	const endpoint = env.R2_ENDPOINT;
-	const url = new URL(endpoint);
-	return url.origin;
+	return new URL(R2_TEST_ENDPOINT).origin;
+}
+
+/** Register a wildcard upstream R2 endpoint. Call in beforeAll. */
+export async function registerUpstreamR2(bucketNames: string[] = ['*']): Promise<void> {
+	const res = await SELF.fetch('http://localhost/admin/upstream-r2', {
+		method: 'POST',
+		headers: adminHeaders(),
+		body: JSON.stringify({
+			name: 'test-r2',
+			access_key_id: R2_TEST_ACCESS_KEY,
+			secret_access_key: R2_TEST_SECRET_KEY,
+			endpoint: R2_TEST_ENDPOINT,
+			bucket_names: bucketNames,
+		}),
+	});
+	const data = await res.json<any>();
+	if (!data.success) throw new Error(`registerUpstreamR2 failed: ${JSON.stringify(data.errors)}`);
 }
 
 // ─── Credential management ──────────────────────────────────────────────────

@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { fetchMock } from 'cloudflare:test';
-import { createCredential, buildClient, signedFetch, mockR2, getR2Origin, s3WildcardPolicy } from './s3-helpers';
+import { createCredential, buildClient, signedFetch, mockR2, getR2Origin, registerUpstreamR2, s3WildcardPolicy } from './s3-helpers';
 
 describe('S3 proxy — core object operations', () => {
-	beforeAll(() => {
+	beforeAll(async () => {
 		fetchMock.activate();
 		fetchMock.disableNetConnect();
+		await registerUpstreamR2();
 	});
 
 	afterEach(() => {
@@ -107,9 +108,10 @@ describe('S3 proxy — core object operations', () => {
 });
 
 describe('S3 proxy — multipart upload operations', () => {
-	beforeAll(() => {
+	beforeAll(async () => {
 		fetchMock.activate();
 		fetchMock.disableNetConnect();
+		await registerUpstreamR2();
 	});
 
 	afterEach(() => {
@@ -198,9 +200,10 @@ describe('S3 proxy — multipart upload operations', () => {
 });
 
 describe('S3 proxy — DeleteObjects (batch)', () => {
-	beforeAll(() => {
+	beforeAll(async () => {
 		fetchMock.activate();
 		fetchMock.disableNetConnect();
+		await registerUpstreamR2();
 	});
 
 	afterEach(() => {
@@ -359,9 +362,10 @@ describe('S3 proxy — DeleteObjects (batch)', () => {
 });
 
 describe('S3 proxy — special characters in object keys', () => {
-	beforeAll(() => {
+	beforeAll(async () => {
 		fetchMock.activate();
 		fetchMock.disableNetConnect();
+		await registerUpstreamR2();
 	});
 
 	afterEach(() => {
@@ -444,9 +448,10 @@ describe('S3 proxy — special characters in object keys', () => {
 });
 
 describe('S3 proxy — upstream error handling', () => {
-	beforeAll(() => {
+	beforeAll(async () => {
 		fetchMock.activate();
 		fetchMock.disableNetConnect();
+		await registerUpstreamR2();
 	});
 
 	afterEach(() => {

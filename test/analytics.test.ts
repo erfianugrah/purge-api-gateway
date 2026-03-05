@@ -7,14 +7,16 @@ import {
 	hostPolicy,
 	wildcardPolicy,
 	mockUpstreamSuccess,
+	registerUpstreamToken,
 	__testClearInflightCache,
 } from './helpers';
 
 // --- Setup ---
 
-beforeAll(() => {
+beforeAll(async () => {
 	fetchMock.activate();
 	fetchMock.disableNetConnect();
+	await registerUpstreamToken();
 });
 
 beforeEach(() => {

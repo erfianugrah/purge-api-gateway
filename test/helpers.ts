@@ -5,6 +5,7 @@ export const ZONE_ID = 'aaaa1111bbbb2222cccc3333dddd4444';
 export const ADMIN_KEY = 'test-admin-secret-key-12345';
 export const UPSTREAM_HOST = 'https://api.cloudflare.com';
 export const UPSTREAM_PATH = `/client/v4/zones/${ZONE_ID}/purge_cache`;
+export const TEST_UPSTREAM_TOKEN = 'cf-test-upstream-token-abcdef1234567890';
 
 export { __testClearInflightCache };
 
@@ -37,6 +38,23 @@ export async function createKeyWithPolicy(
 	const data = await res.json<any>();
 	if (!data.success) throw new Error(`createKeyWithPolicy failed: ${JSON.stringify(data.errors)}`);
 	return data.result.key.id;
+}
+
+// ─── Upstream token registration ────────────────────────────────────────────
+
+/** Register a wildcard upstream CF API token. Call in beforeAll. */
+export async function registerUpstreamToken(zoneIds: string[] = ['*']): Promise<void> {
+	const res = await SELF.fetch('http://localhost/admin/upstream-tokens', {
+		method: 'POST',
+		headers: adminHeaders(),
+		body: JSON.stringify({
+			name: 'test-upstream',
+			token: TEST_UPSTREAM_TOKEN,
+			zone_ids: zoneIds,
+		}),
+	});
+	const data = await res.json<any>();
+	if (!data.success) throw new Error(`registerUpstreamToken failed: ${JSON.stringify(data.errors)}`);
 }
 
 // ─── Upstream mocks ─────────────────────────────────────────────────────────

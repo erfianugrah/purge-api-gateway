@@ -198,7 +198,7 @@ export function formatDuration(ms: number): string {
 export function formatKey(key: {
 	id: string;
 	name: string;
-	zone_id: string;
+	zone_id: string | null;
 	created_at: number;
 	expires_at: number | null;
 	revoked: number;
@@ -208,7 +208,7 @@ export function formatKey(key: {
 
 	label('ID', bold(key.id));
 	label('Name', key.name);
-	label('Zone', key.zone_id);
+	label('Zone', key.zone_id ?? dim('any'));
 	label('Status', status);
 	label('Created', new Date(key.created_at).toISOString());
 	if (key.expires_at) {

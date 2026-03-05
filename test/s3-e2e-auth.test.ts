@@ -1,12 +1,22 @@
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { SELF, fetchMock } from 'cloudflare:test';
-import { createCredential, buildClient, signedFetch, presignedFetch, mockR2, s3WildcardPolicy, s3ReadOnlyPolicy } from './s3-helpers';
+import {
+	createCredential,
+	buildClient,
+	signedFetch,
+	presignedFetch,
+	mockR2,
+	registerUpstreamR2,
+	s3WildcardPolicy,
+	s3ReadOnlyPolicy,
+} from './s3-helpers';
 import { adminHeaders } from './helpers';
 
 describe('S3 proxy — authentication and signature', () => {
-	beforeAll(() => {
+	beforeAll(async () => {
 		fetchMock.activate();
 		fetchMock.disableNetConnect();
+		await registerUpstreamR2();
 	});
 
 	afterEach(() => {
@@ -79,9 +89,10 @@ describe('S3 proxy — authentication and signature', () => {
 });
 
 describe('S3 proxy — presigned URL authentication', () => {
-	beforeAll(() => {
+	beforeAll(async () => {
 		fetchMock.activate();
 		fetchMock.disableNetConnect();
+		await registerUpstreamR2();
 	});
 
 	afterEach(() => {

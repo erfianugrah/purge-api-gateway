@@ -7,6 +7,7 @@ import { s3XmlError, parseDeleteObjectKeys } from './xml';
 import { getStub } from '../do-stub';
 import type { HonoEnv } from '../types';
 import type { RequestContext } from '../policy-types';
+import type { R2Credentials } from './upstream-r2';
 
 // ─── S3 sub-app ─────────────────────────────────────────────────────────────
 
@@ -206,9 +207,26 @@ s3App.all('/*', async (c) => {
 		return s3XmlError('AccessDenied', authResult.error || 'Access Denied', 403);
 	}
 
-	// 4. Forward to R2 — let R2 handle its own errors (501 NotImplemented, 404, etc.)
+	// 4. Resolve upstream R2 credentials for this bucket
+	let r2Creds: R2Credentials | null;
+	if (op.bucket) {
+		r2Creds = await stub.resolveR2ForBucket(op.bucket);
+	} else {
+		// ListBuckets or root-level operation
+		r2Creds = await stub.resolveR2ForListBuckets();
+	}
+
+	if (!r2Creds) {
+		log.status = 502;
+		log.error = 'no_upstream_r2';
+		log.durationMs = Date.now() - start;
+		console.log(JSON.stringify(log));
+		return s3XmlError('InternalError', `No upstream R2 endpoint registered for bucket: ${op.bucket ?? '(none)'}`, 502);
+	}
+
+	// 5. Forward to R2 — let R2 handle its own errors (501 NotImplemented, 404, etc.)
 	try {
-		const r2Response = await forwardToR2(c.req.raw, s3Path, c.env, deleteObjectsBody);
+		const r2Response = await forwardToR2(c.req.raw, s3Path, r2Creds, deleteObjectsBody);
 
 		log.status = r2Response.status;
 		log.durationMs = Date.now() - start;

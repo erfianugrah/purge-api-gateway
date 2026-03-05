@@ -12,14 +12,16 @@ import {
 	mockUpstreamSuccess,
 	mockUpstream429,
 	mockUpstream500,
+	registerUpstreamToken,
 	__testClearInflightCache,
 } from './helpers';
 
 // --- Setup ---
 
-beforeAll(() => {
+beforeAll(async () => {
 	fetchMock.activate();
 	fetchMock.disableNetConnect();
+	await registerUpstreamToken();
 });
 
 beforeEach(() => {

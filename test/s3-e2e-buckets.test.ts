@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { fetchMock } from 'cloudflare:test';
-import { createCredential, buildClient, signedFetch, mockR2, getR2Origin, s3WildcardPolicy } from './s3-helpers';
+import { createCredential, buildClient, signedFetch, mockR2, getR2Origin, registerUpstreamR2, s3WildcardPolicy } from './s3-helpers';
 
 describe('S3 proxy — bucket-level operations', () => {
-	beforeAll(() => {
+	beforeAll(async () => {
 		fetchMock.activate();
 		fetchMock.disableNetConnect();
+		await registerUpstreamR2();
 	});
 
 	afterEach(() => {
@@ -158,9 +159,10 @@ describe('S3 proxy — bucket-level operations', () => {
 });
 
 describe('S3 proxy — R2 unsupported operations (forwarded to R2)', () => {
-	beforeAll(() => {
+	beforeAll(async () => {
 		fetchMock.activate();
 		fetchMock.disableNetConnect();
+		await registerUpstreamR2();
 	});
 
 	afterEach(() => {

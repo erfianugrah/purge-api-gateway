@@ -1,25 +1,25 @@
 import { AwsClient } from 'aws4fetch';
+import type { R2Credentials } from './upstream-r2';
 
 // ─── Outbound re-signing ────────────────────────────────────────────────────
-// Uses aws4fetch to re-sign requests with the R2 admin credentials.
+// Uses aws4fetch to re-sign requests with resolved R2 credentials.
 
-/** Lazily-initialized AwsClient instance keyed by endpoint (one per worker lifetime). */
-let cachedClient: AwsClient | null = null;
-let cachedEndpoint = '';
+/** Lazily-initialized AwsClient instances keyed by access_key_id. */
+const clientCache = new Map<string, AwsClient>();
 
-/** Get or create the AwsClient for outbound R2 requests. */
-function getClient(env: Env): AwsClient {
-	if (cachedClient && cachedEndpoint === env.R2_ENDPOINT) {
-		return cachedClient;
-	}
-	cachedClient = new AwsClient({
-		accessKeyId: env.R2_ACCESS_KEY_ID,
-		secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+/** Get or create the AwsClient for a given set of R2 credentials. */
+function getClient(creds: R2Credentials): AwsClient {
+	const existing = clientCache.get(creds.accessKeyId);
+	if (existing) return existing;
+
+	const client = new AwsClient({
+		accessKeyId: creds.accessKeyId,
+		secretAccessKey: creds.secretAccessKey,
 		service: 's3',
 		region: 'auto',
 	});
-	cachedEndpoint = env.R2_ENDPOINT;
-	return cachedClient;
+	clientCache.set(creds.accessKeyId, client);
+	return client;
 }
 
 /**
@@ -76,11 +76,11 @@ const STRIP_HEADERS = new Set([
  * @param bodyOverride - If provided, used instead of request.body (for cases where
  *   the body was already consumed, e.g. DeleteObjects XML parsing).
  */
-export async function forwardToR2(request: Request, s3Path: string, env: Env, bodyOverride?: string): Promise<Response> {
-	const client = getClient(env);
+export async function forwardToR2(request: Request, s3Path: string, creds: R2Credentials, bodyOverride?: string): Promise<Response> {
+	const client = getClient(creds);
 
 	// Build the R2 URL: endpoint + path (without /s3 prefix)
-	const r2Url = new URL(s3Path, env.R2_ENDPOINT);
+	const r2Url = new URL(s3Path, creds.endpoint);
 
 	// Copy query params from original request — strip presigned URL auth params
 	const inboundUrl = new URL(request.url);

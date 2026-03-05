@@ -2,8 +2,12 @@ import { DurableObject } from 'cloudflare:workers';
 import { TokenBucket } from './token-bucket';
 import { IamManager } from './iam';
 import { S3CredentialManager } from './s3/iam';
+import { UpstreamTokenManager } from './upstream-tokens';
+import { UpstreamR2Manager } from './s3/upstream-r2';
 import type { PurgeBody, ConsumeResult, RateLimitConfig, CreateKeyRequest, AuthResult, ApiKey, PurgeResult } from './types';
 import type { S3Credential, CreateS3CredentialRequest } from './s3/types';
+import type { UpstreamToken, CreateUpstreamTokenRequest } from './upstream-tokens';
+import type { UpstreamR2, CreateUpstreamR2Request, R2Credentials } from './s3/upstream-r2';
 import type { RequestContext } from './policy-types';
 
 // ─── Config ─────────────────────────────────────────────────────────────────
@@ -59,6 +63,8 @@ export class Gatekeeper extends DurableObject<Env> {
 	private singleBucket!: TokenBucket;
 	private iam!: IamManager;
 	private s3Iam!: S3CredentialManager;
+	private upstreamTokens!: UpstreamTokenManager;
+	private upstreamR2!: UpstreamR2Manager;
 
 	/** Per-key rate limit buckets. Lazily created when a key with custom limits is first used. */
 	private keyBuckets = new Map<string, { bulk: TokenBucket; single: TokenBucket }>();
@@ -82,6 +88,12 @@ export class Gatekeeper extends DurableObject<Env> {
 
 			this.s3Iam = new S3CredentialManager(ctx.storage.sql, cacheTtl);
 			this.s3Iam.initTables();
+
+			this.upstreamTokens = new UpstreamTokenManager(ctx.storage.sql, cacheTtl);
+			this.upstreamTokens.initTables();
+
+			this.upstreamR2 = new UpstreamR2Manager(ctx.storage.sql, cacheTtl);
+			this.upstreamR2.initTables();
 		});
 	}
 
@@ -342,5 +354,56 @@ export class Gatekeeper extends DurableObject<Env> {
 	/** Authorize an S3 request against the credential's policy. */
 	async authorizeS3(accessKeyId: string, contexts: RequestContext[]): Promise<AuthResult> {
 		return this.s3Iam.authorize(accessKeyId, contexts);
+	}
+
+	// ─── Upstream Token RPC methods ─────────────────────────────────────
+
+	async createUpstreamToken(req: CreateUpstreamTokenRequest): Promise<{ token: UpstreamToken }> {
+		return this.upstreamTokens.createToken(req);
+	}
+
+	async listUpstreamTokens(filter?: 'active' | 'revoked'): Promise<UpstreamToken[]> {
+		return this.upstreamTokens.listTokens(filter);
+	}
+
+	async getUpstreamToken(id: string): Promise<{ token: UpstreamToken } | null> {
+		return this.upstreamTokens.getToken(id);
+	}
+
+	async revokeUpstreamToken(id: string): Promise<boolean> {
+		return this.upstreamTokens.revokeToken(id);
+	}
+
+	/** Resolve the CF API token for a given zone. Returns null if no match. */
+	async resolveUpstreamToken(zoneId: string): Promise<string | null> {
+		return this.upstreamTokens.resolveTokenForZone(zoneId);
+	}
+
+	// ─── Upstream R2 RPC methods ────────────────────────────────────────
+
+	async createUpstreamR2(req: CreateUpstreamR2Request): Promise<{ endpoint: UpstreamR2 }> {
+		return this.upstreamR2.createEndpoint(req);
+	}
+
+	async listUpstreamR2(filter?: 'active' | 'revoked'): Promise<UpstreamR2[]> {
+		return this.upstreamR2.listEndpoints(filter);
+	}
+
+	async getUpstreamR2(id: string): Promise<{ endpoint: UpstreamR2 } | null> {
+		return this.upstreamR2.getEndpoint(id);
+	}
+
+	async revokeUpstreamR2(id: string): Promise<boolean> {
+		return this.upstreamR2.revokeEndpoint(id);
+	}
+
+	/** Resolve R2 credentials for a bucket. Returns null if no match. */
+	async resolveR2ForBucket(bucket: string): Promise<R2Credentials | null> {
+		return this.upstreamR2.resolveForBucket(bucket);
+	}
+
+	/** Resolve R2 credentials for ListBuckets (no specific bucket). */
+	async resolveR2ForListBuckets(): Promise<R2Credentials | null> {
+		return this.upstreamR2.resolveForListBuckets();
 	}
 }

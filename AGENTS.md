@@ -11,25 +11,26 @@ For all limits and quotas, retrieve from the product's `/platform/limits/` page.
 
 ## Commands
 
-| Command | Purpose |
-|---------|---------|
-| `npx wrangler dev` | Local development |
-| `npx wrangler deploy` | Deploy to Cloudflare |
-| `npx wrangler types` | Generate TypeScript types |
-| `npm test` | Run all tests (worker + CLI) |
-| `npm run test:worker` | Run worker tests only (Cloudflare Workers runtime) |
-| `npm run test:cli` | Run CLI tests only (Node.js runtime) |
-| `npx vitest run test/iam.test.ts` | Run a single worker test file |
-| `npx vitest run -c vitest.cli.config.ts cli/cli.test.ts` | Run a single CLI test file |
-| `npx vitest run -t "test name"` | Run a single test by name |
-| `npm run build:cli` | Build the CLI |
-| `npm run cli -- <command>` | Run the CLI locally (uses tsx + .env) |
+| Command                                                  | Purpose                                            |
+| -------------------------------------------------------- | -------------------------------------------------- |
+| `npx wrangler dev`                                       | Local development                                  |
+| `npx wrangler deploy`                                    | Deploy to Cloudflare                               |
+| `npx wrangler types`                                     | Generate TypeScript types                          |
+| `npm test`                                               | Run all tests (worker + CLI)                       |
+| `npm run test:worker`                                    | Run worker tests only (Cloudflare Workers runtime) |
+| `npm run test:cli`                                       | Run CLI tests only (Node.js runtime)               |
+| `npx vitest run test/iam.test.ts`                        | Run a single worker test file                      |
+| `npx vitest run -c vitest.cli.config.ts cli/cli.test.ts` | Run a single CLI test file                         |
+| `npx vitest run -t "test name"`                          | Run a single test by name                          |
+| `npm run build:cli`                                      | Build the CLI                                      |
+| `npm run cli -- <command>`                               | Run the CLI locally (uses tsx + .env)              |
 
 Run `wrangler types` after changing bindings in wrangler.jsonc.
 
 ### Test architecture
 
 There are two Vitest projects configured in `vitest.config.ts`:
+
 - **worker** (`vitest.worker.config.ts`): Uses `@cloudflare/vitest-pool-workers` to run `test/**/*.test.ts` in the Workers runtime. Tests use `SELF.fetch()` and Durable Object stubs.
 - **cli** (`vitest.cli.config.ts`): Runs `cli/**/*.test.ts` in plain Node.js.
 
@@ -82,19 +83,19 @@ Retrieve API references and limits from:
 
 ### Naming Conventions
 
-| Category | Convention | Example |
-|---|---|---|
-| Files | `kebab-case.ts` | `token-bucket.ts` |
-| Classes | `PascalCase` | `Gatekeeper`, `TokenBucket` |
-| Interfaces/Types | `PascalCase` | `PurgeBody`, `AuthResult` |
-| Functions | `camelCase` | `classifyPurge`, `resolveZoneId` |
-| Variables | `camelCase` | `cacheTtlMs`, `singleBucket` |
-| Module constants | `UPPER_SNAKE_CASE` | `DO_NAME`, `CREATE_TABLE_SQL` |
-| Env bindings | `UPPER_SNAKE_CASE` | `UPSTREAM_API_TOKEN`, `ANALYTICS_DB` |
-| DB columns / API fields | `snake_case` | `zone_id`, `scope_type`, `created_at` |
-| CLI args | `kebab-case` | `zone-id`, `admin-key` |
-| Private class fields | `camelCase` with `private` keyword (not `#`) | `private tokens` |
-| Test-only exports | `__testPrefixed` double-underscore | `__testClearInflightCache()` |
+| Category                | Convention                                   | Example                               |
+| ----------------------- | -------------------------------------------- | ------------------------------------- |
+| Files                   | `kebab-case.ts`                              | `token-bucket.ts`                     |
+| Classes                 | `PascalCase`                                 | `Gatekeeper`, `TokenBucket`           |
+| Interfaces/Types        | `PascalCase`                                 | `PurgeBody`, `AuthResult`             |
+| Functions               | `camelCase`                                  | `classifyPurge`, `resolveZoneId`      |
+| Variables               | `camelCase`                                  | `cacheTtlMs`, `singleBucket`          |
+| Module constants        | `UPPER_SNAKE_CASE`                           | `DO_NAME`, `CREATE_TABLE_SQL`         |
+| Env bindings            | `UPPER_SNAKE_CASE`                           | `ADMIN_KEY`, `ANALYTICS_DB`           |
+| DB columns / API fields | `snake_case`                                 | `zone_id`, `scope_type`, `created_at` |
+| CLI args                | `kebab-case`                                 | `zone-id`, `admin-key`                |
+| Private class fields    | `camelCase` with `private` keyword (not `#`) | `private tokens`                      |
+| Test-only exports       | `__testPrefixed` double-underscore           | `__testClearInflightCache()`          |
 
 ### Functions
 
