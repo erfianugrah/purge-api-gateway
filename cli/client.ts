@@ -1,4 +1,4 @@
-/** Shared HTTP client for the purge-api-gateway CLI */
+/** Shared HTTP client for the gatekeeper CLI */
 
 import { error, formatApiError, spinner, formatDuration } from "./ui.js";
 
@@ -15,22 +15,22 @@ export function resolveConfig(args: {
 }): ClientConfig {
 	const baseUrl = (
 		args.endpoint ||
-		process.env["PURGE_GATEWAY_URL"] ||
+		process.env["GATEKEEPER_URL"] ||
 		"https://purge.example.com"
 	).replace(/\/+$/, "");
 
 	const adminKey =
-		args["admin-key"] || process.env["PURGE_GATEWAY_ADMIN_KEY"];
-	const apiKey = args["api-key"] || process.env["PURGE_GATEWAY_API_KEY"];
+		args["admin-key"] || process.env["GATEKEEPER_ADMIN_KEY"];
+	const apiKey = args["api-key"] || process.env["GATEKEEPER_API_KEY"];
 
 	return { baseUrl, adminKey, apiKey };
 }
 
 export function resolveZoneId(args: { "zone-id"?: string }): string {
 	const zoneId =
-		args["zone-id"] || process.env["PURGE_GATEWAY_ZONE_ID"];
+		args["zone-id"] || process.env["GATEKEEPER_ZONE_ID"];
 	if (!zoneId) {
-		error("Zone ID required. Set --zone-id or PURGE_GATEWAY_ZONE_ID.");
+		error("Zone ID required. Set --zone-id or GATEKEEPER_ZONE_ID.");
 		process.exit(1);
 	}
 	return zoneId;
@@ -56,7 +56,7 @@ export async function request(
 	if (opts?.auth === "admin") {
 		if (!config.adminKey) {
 			error(
-				"Admin key required. Set --admin-key or PURGE_GATEWAY_ADMIN_KEY.",
+				"Admin key required. Set --admin-key or GATEKEEPER_ADMIN_KEY.",
 			);
 			process.exit(1);
 		}
@@ -64,7 +64,7 @@ export async function request(
 	} else if (opts?.auth === "bearer") {
 		if (!config.apiKey) {
 			error(
-				"API key required. Set --api-key or PURGE_GATEWAY_API_KEY.",
+				"API key required. Set --api-key or GATEKEEPER_API_KEY.",
 			);
 			process.exit(1);
 		}

@@ -77,6 +77,14 @@ export async function logPurgeEvent(db: D1Database, event: PurgeEvent): Promise<
 	}
 }
 
+/** Delete purge events older than the given retention period. Returns the number of rows deleted. */
+export async function deleteOldEvents(db: D1Database, retentionDays: number): Promise<number> {
+	await ensureTables(db);
+	const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+	const result = await db.prepare('DELETE FROM purge_events WHERE created_at < ?').bind(cutoff).run();
+	return result.meta.changes ?? 0;
+}
+
 export interface AnalyticsQuery {
 	zone_id: string;
 	key_id?: string;

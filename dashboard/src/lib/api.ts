@@ -142,13 +142,14 @@ export async function listKeys(zoneId: string, status?: "active" | "revoked"): P
 	return apiFetch<ApiKey[]>(`/admin/keys?${params}`, { headers: adminHeaders() });
 }
 
-export async function getKey(id: string, zoneId: string): Promise<CachedKey> {
+export async function getKey(id: string, zoneId: string): Promise<{ key: ApiKey }> {
 	const params = new URLSearchParams({ zone_id: zoneId });
-	return apiFetch<CachedKey>(`/admin/keys/${id}?${params}`, { headers: adminHeaders() });
+	return apiFetch<{ key: ApiKey }>(`/admin/keys/${id}?${params}`, { headers: adminHeaders() });
 }
 
-export async function createKey(req: CreateKeyRequest): Promise<{ key: ApiKey; secret: string }> {
-	return apiFetch<{ key: ApiKey; secret: string }>("/admin/keys", {
+/** Create a key. The key.id (gw_...) IS the Bearer token — there is no separate secret field. */
+export async function createKey(req: CreateKeyRequest): Promise<{ key: ApiKey }> {
+	return apiFetch<{ key: ApiKey }>("/admin/keys", {
 		method: "POST",
 		headers: adminHeaders(),
 		body: JSON.stringify(req),

@@ -6,7 +6,7 @@ interface Props {
   active?: string;
 }
 
-const { title = "purge ctl", active = "overview" } = Astro.props;
+const { title = "gatekeeper", active = "overview" } = Astro.props;
 
 const navItems = [
   { id: "overview", label: "Overview", href: "/dashboard", icon: "grid" },
@@ -50,7 +50,7 @@ const navItems = [
             <span
               class="text-sm font-bold tracking-wider text-lv-purple glow-purple"
             >
-              PURGE CTL
+               GATEKEEPER
             </span>
           </div>
 
@@ -135,7 +135,7 @@ const navItems = [
 
           <!-- Footer -->
           <div class="border-t border-border px-4 py-3">
-            <div class="text-xs text-muted-foreground">Purge API Gateway</div>
+            <div class="text-xs text-muted-foreground">Gatekeeper</div>
           </div>
         </div>
       </aside>

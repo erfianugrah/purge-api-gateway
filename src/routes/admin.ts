@@ -335,7 +335,7 @@ async function timingSafeEqual(a: string, b: string): Promise<boolean> {
 	const encoder = new TextEncoder();
 	const hmacKey = await crypto.subtle.importKey(
 		"raw",
-		encoder.encode("purge-gw-admin-compare"),
+		encoder.encode("gatekeeper-admin-compare"),
 		{ name: "HMAC", hash: "SHA-256" },
 		false,
 		["sign"],

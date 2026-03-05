@@ -88,9 +88,9 @@ describe("resolveConfig", () => {
 	});
 
 	it("uses defaults when no args or env", () => {
-		delete process.env["PURGE_GATEWAY_URL"];
-		delete process.env["PURGE_GATEWAY_ADMIN_KEY"];
-		delete process.env["PURGE_GATEWAY_API_KEY"];
+		delete process.env["GATEKEEPER_URL"];
+		delete process.env["GATEKEEPER_ADMIN_KEY"];
+		delete process.env["GATEKEEPER_API_KEY"];
 
 		const config = resolveConfig({});
 		expect(config.baseUrl).toBe("https://purge.example.com");
@@ -99,9 +99,9 @@ describe("resolveConfig", () => {
 	});
 
 	it("prefers args over env vars", () => {
-		process.env["PURGE_GATEWAY_URL"] = "https://env.example.com";
-		process.env["PURGE_GATEWAY_ADMIN_KEY"] = "env-admin";
-		process.env["PURGE_GATEWAY_API_KEY"] = "env-api";
+		process.env["GATEKEEPER_URL"] = "https://env.example.com";
+		process.env["GATEKEEPER_ADMIN_KEY"] = "env-admin";
+		process.env["GATEKEEPER_API_KEY"] = "env-api";
 
 		const config = resolveConfig({
 			endpoint: "https://arg.example.com",
@@ -114,9 +114,9 @@ describe("resolveConfig", () => {
 	});
 
 	it("falls back to env vars when args missing", () => {
-		process.env["PURGE_GATEWAY_URL"] = "https://env.example.com";
-		process.env["PURGE_GATEWAY_ADMIN_KEY"] = "env-admin";
-		process.env["PURGE_GATEWAY_API_KEY"] = "env-api";
+		process.env["GATEKEEPER_URL"] = "https://env.example.com";
+		process.env["GATEKEEPER_ADMIN_KEY"] = "env-admin";
+		process.env["GATEKEEPER_API_KEY"] = "env-api";
 
 		const config = resolveConfig({});
 		expect(config.baseUrl).toBe("https://env.example.com");
@@ -153,20 +153,20 @@ describe("resolveZoneId", () => {
 	});
 
 	it("falls back to env var", () => {
-		process.env["PURGE_GATEWAY_ZONE_ID"] = "env-zone";
+		process.env["GATEKEEPER_ZONE_ID"] = "env-zone";
 		const zoneId = resolveZoneId({});
 		expect(zoneId).toBe("env-zone");
 		expect(process.exit).not.toHaveBeenCalled();
 	});
 
 	it("prefers arg over env", () => {
-		process.env["PURGE_GATEWAY_ZONE_ID"] = "env-zone";
+		process.env["GATEKEEPER_ZONE_ID"] = "env-zone";
 		const zoneId = resolveZoneId({ "zone-id": "arg-zone" });
 		expect(zoneId).toBe("arg-zone");
 	});
 
 	it("exits when neither arg nor env set", () => {
-		delete process.env["PURGE_GATEWAY_ZONE_ID"];
+		delete process.env["GATEKEEPER_ZONE_ID"];
 		resolveZoneId({});
 		expect(process.exit).toHaveBeenCalledWith(1);
 	});

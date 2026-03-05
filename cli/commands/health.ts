@@ -7,7 +7,7 @@ export default defineCommand({
 	args: {
 		endpoint: {
 			type: "string",
-			description: "Gateway URL ($PURGE_GATEWAY_URL)",
+			description: "Gateway URL ($GATEKEEPER_URL)",
 		},
 		json: {
 			type: "boolean",

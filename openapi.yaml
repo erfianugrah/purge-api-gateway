@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: Purge API Gateway
+  title: Gatekeeper
   description: >
     Rate-limited API gateway with AWS IAM-style policy authorization.
     Fronts Cloudflare's cache purge API with per-key policies, token-bucket

@@ -3,9 +3,9 @@ import { defineCommand, runMain } from "citty";
 
 const main = defineCommand({
 	meta: {
-		name: "purge-gw",
+		name: "gk",
 		version: "0.1.0",
-		description: "CLI for purge-api-gateway",
+		description: "CLI for gatekeeper — API gateway with IAM",
 	},
 	subCommands: {
 		health: () => import("./commands/health.js").then((m) => m.default),

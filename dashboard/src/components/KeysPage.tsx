@@ -27,6 +27,7 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "@/components/ui/dialog";
+import { PolicyBuilder } from "@/components/PolicyBuilder";
 import { listKeys, createKey, revokeKey } from "@/lib/api";
 import type { ApiKey, PolicyDocument } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -46,17 +47,6 @@ function formatDate(epoch: number): string {
 	});
 }
 
-const DEFAULT_POLICY: PolicyDocument = {
-	version: "1",
-	statements: [
-		{
-			effect: "allow",
-			actions: ["purge:single", "purge:bulk"],
-			resources: ["*"],
-		},
-	],
-};
-
 // ─── Create Key Dialog ──────────────────────────────────────────────
 
 interface CreateKeyDialogProps {
@@ -64,30 +54,44 @@ interface CreateKeyDialogProps {
 	onCreated: (secret: string) => void;
 }
 
+function makeDefaultPolicy(zoneId: string): PolicyDocument {
+	return {
+		version: "2025-01-01",
+		statements: [
+			{
+				effect: "allow",
+				actions: ["purge:*"],
+				resources: [zoneId ? `zone:${zoneId}` : "*"],
+			},
+		],
+	};
+}
+
 function CreateKeyDialog({ zoneId, onCreated }: CreateKeyDialogProps) {
 	const [open, setOpen] = useState(false);
 	const [name, setName] = useState("");
-	const [policyJson, setPolicyJson] = useState(JSON.stringify(DEFAULT_POLICY, null, 2));
+	const [policy, setPolicy] = useState<PolicyDocument>(() => makeDefaultPolicy(zoneId));
 	const [creating, setCreating] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
 	const handleCreate = async () => {
 		setError(null);
-		let policy: PolicyDocument;
-		try {
-			policy = JSON.parse(policyJson);
-		} catch {
-			setError("Invalid JSON in policy field");
+		if (policy.statements.length === 0) {
+			setError("Policy must have at least one statement");
+			return;
+		}
+		if (policy.statements.some((s) => s.actions.length === 0)) {
+			setError("Each statement must have at least one action");
 			return;
 		}
 
 		setCreating(true);
 		try {
 			const result = await createKey({ name, zone_id: zoneId, policy });
-			onCreated(result.secret);
+			onCreated(result.key.id);
 			setOpen(false);
 			setName("");
-			setPolicyJson(JSON.stringify(DEFAULT_POLICY, null, 2));
+			setPolicy(makeDefaultPolicy(zoneId));
 		} catch (e: any) {
 			setError(e.message ?? "Failed to create key");
 		} finally {
@@ -95,19 +99,26 @@ function CreateKeyDialog({ zoneId, onCreated }: CreateKeyDialogProps) {
 		}
 	};
 
+	// Reset policy when zone changes
+	const handleOpenChange = (next: boolean) => {
+		if (next) setPolicy(makeDefaultPolicy(zoneId));
+		setOpen(next);
+		setError(null);
+	};
+
 	return (
-		<Dialog open={open} onOpenChange={setOpen}>
+		<Dialog open={open} onOpenChange={handleOpenChange}>
 			<DialogTrigger asChild>
 				<Button size="sm" disabled={!zoneId}>
 					<Plus className="h-4 w-4" />
 					Create Key
 				</Button>
 			</DialogTrigger>
-			<DialogContent>
+			<DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
 				<DialogHeader>
 					<DialogTitle>Create API Key</DialogTitle>
 					<DialogDescription>
-						Create a new API key for zone <span className="font-data text-lv-cyan">{zoneId}</span>.
+						Create a new API key for zone <span className="font-data text-lv-cyan">{truncateId(zoneId, 16)}</span>.
 					</DialogDescription>
 				</DialogHeader>
 
@@ -122,13 +133,8 @@ function CreateKeyDialog({ zoneId, onCreated }: CreateKeyDialogProps) {
 					</div>
 
 					<div className="space-y-2">
-						<Label className={T.formLabel}>Policy JSON</Label>
-						<textarea
-							className="flex min-h-[120px] w-full rounded-md border border-input bg-transparent px-3 py-2 font-data text-xs shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-							value={policyJson}
-							onChange={(e) => setPolicyJson(e.target.value)}
-						/>
-						<p className={T.muted}>Full policy builder coming soon.</p>
+						<Label className={T.formLabel}>Policy</Label>
+						<PolicyBuilder zoneId={zoneId} value={policy} onChange={setPolicy} />
 					</div>
 
 					{error && (

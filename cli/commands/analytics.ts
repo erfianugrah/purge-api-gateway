@@ -21,16 +21,16 @@ import {
 const globalArgs = {
 	endpoint: {
 		type: "string" as const,
-		description: "Gateway URL ($PURGE_GATEWAY_URL)",
+		description: "Gateway URL ($GATEKEEPER_URL)",
 	},
 	"admin-key": {
 		type: "string" as const,
-		description: "Admin key ($PURGE_GATEWAY_ADMIN_KEY)",
+		description: "Admin key ($GATEKEEPER_ADMIN_KEY)",
 	},
 	"zone-id": {
 		type: "string" as const,
 		alias: ["z"] as string[],
-		description: "Cloudflare zone ID ($PURGE_GATEWAY_ZONE_ID)",
+		description: "Cloudflare zone ID ($GATEKEEPER_ZONE_ID)",
 	},
 	json: {
 		type: "boolean" as const,

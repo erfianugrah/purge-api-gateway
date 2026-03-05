@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ─── Smoke test suite for purge-api-gateway ──────────────────────────────────
+# ─── Smoke test suite for gatekeeper ──────────────────────────────────────────
 # Requires: curl, jq, wrangler dev running on $BASE (default http://localhost:8787)
 # Reads secrets from .dev.vars
 # Usage:
@@ -121,7 +121,7 @@ section() {
 # ─── Discover zone ID ───────────────────────────────────────────────────────
 
 echo ""
-printf "\033[1mPurge API Gateway — Smoke Tests\033[0m\n"
+printf "\033[1mGatekeeper — Smoke Tests\033[0m\n"
 echo "Base: $BASE"
 
 # Check server is up
@@ -539,13 +539,13 @@ section "Dashboard Static Assets"
 
 request GET "/dashboard/"
 assert_status "GET /dashboard/ -> 200" 200
-if echo "$BODY" | grep -q 'purge ctl'; then
+if echo "$BODY" | grep -q 'gatekeeper'; then
 	PASS=$((PASS + 1))
-	printf "  \033[32mPASS\033[0m  dashboard HTML contains 'purge ctl'\n"
+	printf "  \033[32mPASS\033[0m  dashboard HTML contains 'gatekeeper'\n"
 else
 	FAIL=$((FAIL + 1))
-	ERRORS+=("dashboard HTML missing 'purge ctl'")
-	printf "  \033[31mFAIL\033[0m  dashboard HTML missing 'purge ctl'\n"
+	ERRORS+=("dashboard HTML missing 'gatekeeper'")
+	printf "  \033[31mFAIL\033[0m  dashboard HTML missing 'gatekeeper'\n"
 fi
 
 request GET "/dashboard/keys/"

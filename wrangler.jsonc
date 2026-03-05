@@ -1,6 +1,6 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "purge-api-gateway",
+	"name": "gatekeeper",
 	"main": "src/index.ts",
 	"compatibility_date": "2026-03-01",
 	"compatibility_flags": [
@@ -44,6 +44,9 @@
 		"not_found_handling": "single-page-application",
 		"run_worker_first": ["/v1/*", "/admin/*", "/health"]
 	},
+	"triggers": {
+		"crons": ["0 3 * * *"]
+	},
 	"vars": {
 		"BULK_RATE": "50",
 		"BULK_BUCKET_SIZE": "500",
@@ -51,6 +54,7 @@
 		"SINGLE_RATE": "3000",
 		"SINGLE_BUCKET_SIZE": "6000",
 		"SINGLE_MAX_OPS": "500",
-		"KEY_CACHE_TTL_MS": "60000"
+		"KEY_CACHE_TTL_MS": "60000",
+		"RETENTION_DAYS": "30"
 	}
 }
