@@ -578,8 +578,8 @@ describe("Misc", () => {
 		expect(data.ok).toBe(true);
 	});
 
-	it("unknown routes return 404", async () => {
-		const res = await SELF.fetch("http://localhost/unknown/path");
+	it("unknown API routes return 404", async () => {
+		const res = await SELF.fetch("http://localhost/v1/unknown/path");
 		expect(res.status).toBe(404);
 	});
 });

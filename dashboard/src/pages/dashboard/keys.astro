@@ -1,0 +1,8 @@
+---
+import DashboardLayout from "../../layouts/DashboardLayout.astro";
+import { KeysPage } from "../../components/KeysPage";
+---
+
+<DashboardLayout title="purge ctl — Keys" active="keys">
+  <KeysPage client:load />
+</DashboardLayout>

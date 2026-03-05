@@ -38,6 +38,12 @@
 			"database_id": "e27c1085-f743-46fa-9308-0c5a686dbec6"
 		}
 	],
+	"assets": {
+		"directory": "./dashboard/dist/",
+		"binding": "ASSETS",
+		"not_found_handling": "single-page-application",
+		"run_worker_first": ["/v1/*", "/admin/*", "/health"]
+	},
 	"vars": {
 		"BULK_RATE": "50",
 		"BULK_BUCKET_SIZE": "500",

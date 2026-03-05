@@ -1,0 +1,8 @@
+---
+import DashboardLayout from "../../layouts/DashboardLayout.astro";
+import { AnalyticsPage } from "../../components/AnalyticsPage";
+---
+
+<DashboardLayout title="purge ctl — Analytics" active="analytics">
+  <AnalyticsPage client:load />
+</DashboardLayout>
