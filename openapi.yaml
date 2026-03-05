@@ -233,18 +233,6 @@ components:
         single_bucket:
           type: ["integer", "null"]
 
-    CachedKey:
-      type: object
-      required: [key, resolvedPolicy, cachedAt]
-      properties:
-        key:
-          $ref: "#/components/schemas/ApiKey"
-        resolvedPolicy:
-          $ref: "#/components/schemas/PolicyDocument"
-        cachedAt:
-          type: integer
-          description: Unix timestamp (ms) when the key was cached.
-
     # --- Create key request ---
 
     CreateKeyRequest:
@@ -329,9 +317,11 @@ components:
 
     PurgeEvent:
       type: object
+      required: [id, key_id, zone_id, purge_type, cost, status, duration_ms, created_at]
       properties:
         id:
           type: integer
+          description: Auto-incrementing event ID from D1.
         key_id:
           type: string
         zone_id:
@@ -345,8 +335,9 @@ components:
           type: integer
         collapsed:
           type: ["string", "null"]
-          enum: [isolate, do, null]
-          description: Request collapsing level, or null if not collapsed.
+          description: >
+            Request collapsing level: `"isolate"` (same isolate),
+            `"do"` (Durable Object), or `null` if not collapsed.
         upstream_status:
           type: ["integer", "null"]
         duration_ms:
@@ -443,6 +434,9 @@ paths:
       description: >
         Proxy to Cloudflare's purge API with IAM policy authorization,
         token-bucket rate limiting, and isolate+DO request collapsing.
+        Non-200 responses from the upstream Cloudflare API (including
+        429, 500, etc.) are passed through with their original status
+        code and body.
       tags: [Purge]
       security:
         - ApiKeyAuth: []
@@ -499,12 +493,18 @@ paths:
               schema:
                 type: string
               description: >
-                Token bucket state: `limit=<bucketSize>, remaining=<tokens>,
-                reset=<secondsUntilRefill>`.
+                Token bucket state as a Structured Field.
+                Format: `"<bucket-name>";r=<remaining>;t=<retry-after-sec>`.
+                Example: `"purge-bulk";r=499;t=0`.
+              example: '"purge-bulk";r=499;t=0'
             Ratelimit-Policy:
               schema:
                 type: string
-              description: "Rate limit policy: `<bucketSize>;w=1;policy=\"token-bucket\"`."
+              description: >
+                Rate limit policy as a Structured Field.
+                Format: `"<bucket-name>";q=<bucket-size>;w=<window-sec>`.
+                Example: `"purge-bulk";q=500;w=10`.
+              example: '"purge-bulk";q=500;w=10'
         "400":
           description: Invalid request (bad zone ID, invalid JSON, bad purge body).
           content:
@@ -532,9 +532,14 @@ paths:
                         type: array
                         items:
                           type: string
-                        description: List of items that failed policy evaluation.
+                        description: >
+                          List of items that failed policy evaluation.
+                          Present only when specific items were denied.
         "429":
-          description: Rate limited.
+          description: >
+            Rate limited — either by the gateway's token bucket or by the
+            upstream Cloudflare API. Upstream 429 responses are passed through
+            with their original body.
           content:
             application/json:
               schema:
@@ -547,6 +552,14 @@ paths:
             Ratelimit:
               schema:
                 type: string
+              description: Token bucket state (same format as 200 response).
+        "502":
+          description: >
+            Upstream Cloudflare API request failed (network error, timeout).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   # ─── Admin: Keys ──────────────────────────────────────────────────────────
 
@@ -556,7 +569,8 @@ paths:
       summary: Create API key
       description: >
         Create a new gateway API key with an attached IAM policy document.
-        Returns the key metadata and the secret (shown only once).
+        The returned key `id` (prefix `gw_`) is the Bearer token used
+        for purge requests.
       tags: [Keys]
       security:
         - CloudflareAccess: []
@@ -609,15 +623,13 @@ paths:
                     const: true
                   result:
                     type: object
-                    required: [key, secret]
+                    required: [key]
                     properties:
                       key:
                         $ref: "#/components/schemas/ApiKey"
-                      secret:
-                        type: string
                         description: >
-                          The raw API key. Shown only once — store it securely.
-                        examples: ["gw_a1b2c3d4e5f6g7h8i9j0"]
+                          The created API key. The `id` field (prefix `gw_`)
+                          is used as the Bearer token for purge requests.
         "400":
           description: Validation error (missing fields, invalid policy, rate limits exceed account defaults).
           content:
@@ -679,9 +691,7 @@ paths:
     get:
       operationId: getKey
       summary: Get API key details
-      description: >
-        Returns the key metadata, the resolved (parsed) policy document,
-        and the cache timestamp.
+      description: Returns the key metadata including the serialized policy.
       tags: [Keys]
       security:
         - CloudflareAccess: []
@@ -702,7 +712,11 @@ paths:
                     type: boolean
                     const: true
                   result:
-                    $ref: "#/components/schemas/CachedKey"
+                    type: object
+                    required: [key]
+                    properties:
+                      key:
+                        $ref: "#/components/schemas/ApiKey"
         "400":
           description: Missing zone_id query parameter.
           content:
