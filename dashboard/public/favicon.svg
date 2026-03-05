@@ -1,4 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
   <rect width="32" height="32" rx="6" fill="#1a1025" />
-  <polygon points="18 3 7 18 15 18 14 29 25 14 17 14 18 3" fill="#c574dd" />
+  <!-- Shield outline -->
+  <path d="M16 4 L6 9 L6 16 C6 22.5 10.2 27.5 16 29 C21.8 27.5 26 22.5 26 16 L26 9 Z"
+        fill="none" stroke="#c574dd" stroke-width="1.8" stroke-linejoin="round" />
+  <!-- Keyhole -->
+  <circle cx="16" cy="15" r="3" fill="#c574dd" />
+  <rect x="14.8" y="17" width="2.4" height="5" rx="1" fill="#c574dd" />
 </svg>

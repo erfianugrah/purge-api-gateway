@@ -60,14 +60,19 @@ export interface PurgeEvent {
 	id: number;
 	key_id: string;
 	zone_id: string;
-	purge_type: 'single' | 'bulk';
-	cost: number;
+	purge_type: string;
+	/** Human-readable summary of the purge target — hosts, URLs, tags, prefixes, or "*". */
+	purge_target: string | null;
+	/** Rate-limit tokens consumed. For url purges: number of URLs. For bulk types: 1. */
+	tokens: number;
 	status: number;
 	collapsed: string | null;
 	upstream_status: number | null;
 	duration_ms: number;
 	response_detail: string | null;
 	created_by: string | null;
+	/** Links a leader to its collapsed followers — all share the same flight_id. */
+	flight_id: string | null;
 	created_at: number;
 }
 

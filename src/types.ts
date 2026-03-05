@@ -15,12 +15,20 @@ export type { HonoEnv };
 
 // --- Purge request types ---
 
-export type PurgeType = 'single' | 'bulk';
+/** Human-readable purge operation type stored in analytics. */
+export type PurgeType = 'host' | 'tag' | 'prefix' | 'url' | 'everything';
+
+/** Rate-limit bucket class — determines which token bucket is used. */
+export type RateClass = 'bulk' | 'single';
 
 export interface ParsedPurgeRequest {
 	type: PurgeType;
-	/** Number of tokens to consume. For single-file: number of URLs. For bulk: always 1. */
-	cost: number;
+	/** Which rate-limit bucket to consume from. */
+	rateClass: RateClass;
+	/** Number of rate-limit tokens to consume. For url: number of URLs. For bulk types: always 1. */
+	tokens: number;
+	/** Human-readable summary of the purge target — hosts, URLs, tags, prefixes, or "all". */
+	target: string;
 	/** Original parsed body */
 	body: PurgeBody;
 }
@@ -118,6 +126,8 @@ export interface PurgeResult {
 	collapsed: boolean;
 	/** Whether the request actually reached the Cloudflare upstream API. */
 	reachedUpstream: boolean;
+	/** Stable identifier linking a leader to its collapsed followers. */
+	flightId: string;
 	rateLimitInfo: {
 		remaining: number;
 		secondsUntilRefill: number;

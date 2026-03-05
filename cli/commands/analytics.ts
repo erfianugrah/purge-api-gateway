@@ -92,14 +92,14 @@ const events = defineCommand({
 				ts,
 				statusColor(String(statusCode)),
 				e.purge_type as string,
-				String(e.cost),
+				String(e.tokens ?? e.cost ?? '-'),
 				collapsed,
 				dim(String(e.duration_ms) + 'ms'),
 				gray(keyShort),
 			];
 		});
 
-		table(['Time', 'Status', 'Type', 'Cost', 'Collapsed', 'Duration', 'Key'], rows);
+		table(['Time', 'Status', 'Type', 'Tokens', 'Collapsed', 'Duration', 'Key'], rows);
 		console.error('');
 	},
 });

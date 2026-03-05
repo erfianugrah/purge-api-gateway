@@ -54,8 +54,27 @@ if [[ -z "$CF_API_TOKEN" ]]; then
 	exit 1
 fi
 
-# Track all created keys for cleanup
+# R2 credentials — needed for S3 proxy smoke tests
+R2_ACCESS_KEY="${R2_ACCESS_KEY:-}"
+R2_SECRET_KEY="${R2_SECRET_KEY:-}"
+R2_ENDPOINT="${R2_ENDPOINT:-}"
+S3_TEST_BUCKET="${S3_TEST_BUCKET:-vault}"
+
+if [[ -z "$R2_ACCESS_KEY" && -f .env ]]; then
+	R2_ACCESS_KEY=$(grep '^R2_TEST_ACCESS_KEY=' .env | cut -d= -f2- || true)
+	R2_SECRET_KEY=$(grep '^R2_TEST_SECRET_KEY=' .env | cut -d= -f2- || true)
+	R2_ENDPOINT=$(grep '^R2_TEST_ENDPOINT=' .env | cut -d= -f2- || true)
+fi
+
+SKIP_S3=false
+if [[ -z "$R2_ACCESS_KEY" || -z "$R2_SECRET_KEY" || -z "$R2_ENDPOINT" ]]; then
+	echo "WARN: R2 credentials not found — S3 proxy tests will be skipped"
+	SKIP_S3=true
+fi
+
+# Track all created keys/credentials for cleanup
 CREATED_KEYS=()
+CREATED_S3_CREDS=()
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -563,7 +582,7 @@ assert_json "event has key_id" '.result[0].key_id | startswith("gw_")' "true"
 assert_json "event has zone_id" '.result[0].zone_id' "$ZONE"
 assert_json "event has purge_type" '.result[0].purge_type | length > 0' "true"
 assert_json "event has status" '.result[0].status | . > 0' "true"
-assert_json "event has created_by" '.result[0].created_by | startswith("gw_")' "true"
+assert_json "event has created_by" '.result[0].created_by' "via API key"
 
 # Find a 200-status event to verify response_detail
 DETAIL_EVENT=$(echo "$BODY" | jq -r '[.result[] | select(.status == 200)][0].response_detail // ""')
@@ -656,7 +675,291 @@ fi
 request GET "/"
 assert_status "GET / -> 200 (root index)" 200
 
-# ─── 15. API Route 404s ─────────────────────────────────────────────────────
+# ─── 15–19. S3 Proxy Tests ───────────────────────────────────────────────────
+
+if [[ "$SKIP_S3" == true ]]; then
+	section "S3 Proxy Tests (skipped — no R2 credentials)"
+	printf "  \033[33mSKIP\033[0m  Set R2_TEST_ACCESS_KEY, R2_TEST_SECRET_KEY, R2_TEST_ENDPOINT in .env\n"
+else
+
+# ─── 15. S3 Proxy — Credential CRUD ─────────────────────────────────────────
+
+section "S3 Credential CRUD"
+
+# Register upstream R2 endpoint (needed for S3 proxy to forward requests)
+S3_UPSTREAM_REG=$(curl -s -X POST "${BASE}/admin/upstream-r2" \
+	-H "X-Admin-Key: $ADMIN_KEY" \
+	-H "Content-Type: application/json" \
+	-d "{\"name\":\"smoke-r2\",\"endpoint\":\"$R2_ENDPOINT\",\"access_key_id\":\"$R2_ACCESS_KEY\",\"secret_access_key\":\"$R2_SECRET_KEY\",\"bucket_names\":[\"$S3_TEST_BUCKET\"]}")
+S3_UPSTREAM_OK=$(echo "$S3_UPSTREAM_REG" | jq -r '.success')
+S3_UPSTREAM_ID=$(echo "$S3_UPSTREAM_REG" | jq -r '.result.id')
+if [[ "$S3_UPSTREAM_OK" == "true" ]]; then
+	PASS=$((PASS + 1))
+	printf "  \033[32mPASS\033[0m  register upstream R2 -> success (%s)\n" "$S3_UPSTREAM_ID"
+else
+	FAIL=$((FAIL + 1))
+	ERRORS+=("register upstream R2 failed: $(echo "$S3_UPSTREAM_REG" | jq -r '.errors[0].message // "unknown"')")
+	printf "  \033[31mFAIL\033[0m  register upstream R2\n"
+fi
+
+# Full-access S3 credential
+FULL_S3_POLICY='{"version":"2025-01-01","statements":[{"effect":"allow","actions":["s3:*"],"resources":["*"]}]}'
+request POST "/admin/s3/credentials" \
+	"{\"name\":\"smoke-s3-full\",\"policy\":$FULL_S3_POLICY}" \
+	"X-Admin-Key: $ADMIN_KEY"
+assert_status "create full-access S3 credential -> 200" 200
+S3_FULL_AK=$(echo "$BODY" | jq -r '.result.credential.access_key_id')
+S3_FULL_SK=$(echo "$BODY" | jq -r '.result.credential.secret_access_key')
+assert_json "S3 cred has GK prefix" '.result.credential.access_key_id | startswith("GK")' "true"
+CREATED_S3_CREDS=("$S3_FULL_AK")
+
+# Read-only credential (only GetObject + ListBuckets)
+READONLY_S3_POLICY='{"version":"2025-01-01","statements":[{"effect":"allow","actions":["s3:GetObject","s3:HeadObject","s3:ListBucket","s3:ListAllMyBuckets"],"resources":["*"]}]}'
+request POST "/admin/s3/credentials" \
+	"{\"name\":\"smoke-s3-readonly\",\"policy\":$READONLY_S3_POLICY}" \
+	"X-Admin-Key: $ADMIN_KEY"
+assert_status "create read-only S3 credential -> 200" 200
+S3_RO_AK=$(echo "$BODY" | jq -r '.result.credential.access_key_id')
+S3_RO_SK=$(echo "$BODY" | jq -r '.result.credential.secret_access_key')
+CREATED_S3_CREDS+=("$S3_RO_AK")
+
+# List credentials
+request GET "/admin/s3/credentials" "X-Admin-Key: $ADMIN_KEY"
+assert_status "list S3 credentials -> 200" 200
+S3_CRED_COUNT=$(echo "$BODY" | jq '[.result[] | select(.access_key_id == "'"$S3_FULL_AK"'" or .access_key_id == "'"$S3_RO_AK"'")] | length')
+if [[ "$S3_CRED_COUNT" -ge 2 ]]; then
+	PASS=$((PASS + 1))
+	printf "  \033[32mPASS\033[0m  both smoke creds in list (found %s)\n" "$S3_CRED_COUNT"
+else
+	FAIL=$((FAIL + 1))
+	ERRORS+=("expected >= 2 smoke S3 creds, got $S3_CRED_COUNT")
+	printf "  \033[31mFAIL\033[0m  smoke creds in list (found %s)\n" "$S3_CRED_COUNT"
+fi
+
+# Get single credential
+request GET "/admin/s3/credentials/$S3_FULL_AK" "X-Admin-Key: $ADMIN_KEY"
+assert_status "get S3 credential -> 200" 200
+assert_json "get cred returns correct id" '.result.credential.access_key_id' "$S3_FULL_AK"
+
+# Validation: missing name
+request POST "/admin/s3/credentials" '{"policy":'"$FULL_S3_POLICY"'}' "X-Admin-Key: $ADMIN_KEY"
+assert_status "S3 cred missing name -> 400" 400
+
+# Validation: missing policy
+request POST "/admin/s3/credentials" '{"name":"x"}' "X-Admin-Key: $ADMIN_KEY"
+assert_status "S3 cred missing policy -> 400" 400
+
+# ─── 16. S3 Proxy — Operations (full-access credential) ────────────────────
+
+section "S3 Operations (full-access)"
+
+S3_URL="${BASE}/s3"
+
+# Helper: run aws s3api commands against our gateway
+s3api() {
+	AWS_ACCESS_KEY_ID="$1" AWS_SECRET_ACCESS_KEY="$2" \
+		aws s3api "${@:3}" \
+		--endpoint-url "$S3_URL" \
+		--region auto \
+		--no-sign-request=false \
+		--no-verify-ssl 2>&1
+}
+
+# ListBuckets
+S3_OUT=$(s3api "$S3_FULL_AK" "$S3_FULL_SK" list-buckets)
+if echo "$S3_OUT" | jq -e '.Buckets' >/dev/null 2>&1; then
+	PASS=$((PASS + 1))
+	BUCKET_COUNT=$(echo "$S3_OUT" | jq '.Buckets | length')
+	printf "  \033[32mPASS\033[0m  ListBuckets -> success (%s buckets)\n" "$BUCKET_COUNT"
+else
+	FAIL=$((FAIL + 1))
+	ERRORS+=("ListBuckets failed: $S3_OUT")
+	printf "  \033[31mFAIL\033[0m  ListBuckets\n"
+fi
+
+# PutObject
+SMOKE_KEY="smoke-test-$(date +%s).txt"
+S3_OUT=$(echo "smoke test content" | s3api "$S3_FULL_AK" "$S3_FULL_SK" put-object \
+	--bucket "$S3_TEST_BUCKET" --key "$SMOKE_KEY" --body -)
+if echo "$S3_OUT" | jq -e '.ETag' >/dev/null 2>&1; then
+	PASS=$((PASS + 1))
+	printf "  \033[32mPASS\033[0m  PutObject -> success (key: %s)\n" "$SMOKE_KEY"
+else
+	FAIL=$((FAIL + 1))
+	ERRORS+=("PutObject failed: $S3_OUT")
+	printf "  \033[31mFAIL\033[0m  PutObject\n"
+fi
+
+# HeadObject
+S3_OUT=$(s3api "$S3_FULL_AK" "$S3_FULL_SK" head-object \
+	--bucket "$S3_TEST_BUCKET" --key "$SMOKE_KEY" 2>&1)
+if echo "$S3_OUT" | jq -e '.ContentLength' >/dev/null 2>&1; then
+	PASS=$((PASS + 1))
+	printf "  \033[32mPASS\033[0m  HeadObject -> success\n"
+else
+	FAIL=$((FAIL + 1))
+	ERRORS+=("HeadObject failed: $S3_OUT")
+	printf "  \033[31mFAIL\033[0m  HeadObject\n"
+fi
+
+# GetObject
+S3_BODY=$(AWS_ACCESS_KEY_ID="$S3_FULL_AK" AWS_SECRET_ACCESS_KEY="$S3_FULL_SK" \
+	aws s3api get-object \
+	--endpoint-url "$S3_URL" \
+	--region auto \
+	--bucket "$S3_TEST_BUCKET" --key "$SMOKE_KEY" \
+	/dev/stdout 2>/dev/null)
+if [[ "$S3_BODY" == *"smoke test content"* ]]; then
+	PASS=$((PASS + 1))
+	printf "  \033[32mPASS\033[0m  GetObject -> correct content\n"
+else
+	FAIL=$((FAIL + 1))
+	ERRORS+=("GetObject content mismatch: got '$S3_BODY'")
+	printf "  \033[31mFAIL\033[0m  GetObject content mismatch\n"
+fi
+
+# ListObjectsV2
+S3_OUT=$(s3api "$S3_FULL_AK" "$S3_FULL_SK" list-objects-v2 \
+	--bucket "$S3_TEST_BUCKET" --prefix "smoke-test-" --max-keys 10)
+if echo "$S3_OUT" | jq -e '.Contents' >/dev/null 2>&1; then
+	OBJ_COUNT=$(echo "$S3_OUT" | jq '.Contents | length')
+	PASS=$((PASS + 1))
+	printf "  \033[32mPASS\033[0m  ListObjectsV2 -> %s objects with prefix\n" "$OBJ_COUNT"
+else
+	FAIL=$((FAIL + 1))
+	ERRORS+=("ListObjectsV2 failed: $S3_OUT")
+	printf "  \033[31mFAIL\033[0m  ListObjectsV2\n"
+fi
+
+# DeleteObject
+S3_OUT=$(s3api "$S3_FULL_AK" "$S3_FULL_SK" delete-object \
+	--bucket "$S3_TEST_BUCKET" --key "$SMOKE_KEY" 2>&1)
+# DeleteObject returns empty on success — verify with HeadObject 404
+S3_HEAD=$(s3api "$S3_FULL_AK" "$S3_FULL_SK" head-object \
+	--bucket "$S3_TEST_BUCKET" --key "$SMOKE_KEY" 2>&1)
+if echo "$S3_HEAD" | grep -qi "404\|NoSuchKey\|Not Found\|error"; then
+	PASS=$((PASS + 1))
+	printf "  \033[32mPASS\033[0m  DeleteObject -> object removed\n"
+else
+	FAIL=$((FAIL + 1))
+	ERRORS+=("DeleteObject: object still exists after delete")
+	printf "  \033[31mFAIL\033[0m  DeleteObject (object still exists)\n"
+fi
+
+# ─── 17. S3 Proxy — IAM Enforcement (read-only credential) ─────────────────
+
+section "S3 IAM Enforcement (read-only)"
+
+# ListBuckets should work with read-only
+S3_OUT=$(s3api "$S3_RO_AK" "$S3_RO_SK" list-buckets)
+if echo "$S3_OUT" | jq -e '.Buckets' >/dev/null 2>&1; then
+	PASS=$((PASS + 1))
+	printf "  \033[32mPASS\033[0m  read-only: ListBuckets -> allowed\n"
+else
+	FAIL=$((FAIL + 1))
+	ERRORS+=("read-only ListBuckets should succeed: $S3_OUT")
+	printf "  \033[31mFAIL\033[0m  read-only: ListBuckets\n"
+fi
+
+# PutObject should be DENIED with read-only
+S3_OUT=$(echo "denied content" | s3api "$S3_RO_AK" "$S3_RO_SK" put-object \
+	--bucket "$S3_TEST_BUCKET" --key "smoke-denied.txt" --body - 2>&1)
+if echo "$S3_OUT" | grep -qi "AccessDenied\|403\|Forbidden"; then
+	PASS=$((PASS + 1))
+	printf "  \033[32mPASS\033[0m  read-only: PutObject -> denied (403)\n"
+else
+	FAIL=$((FAIL + 1))
+	ERRORS+=("read-only PutObject should be denied: $S3_OUT")
+	printf "  \033[31mFAIL\033[0m  read-only: PutObject should be denied\n"
+fi
+
+# DeleteObject should be DENIED with read-only
+S3_OUT=$(s3api "$S3_RO_AK" "$S3_RO_SK" delete-object \
+	--bucket "$S3_TEST_BUCKET" --key "nonexistent.txt" 2>&1)
+if echo "$S3_OUT" | grep -qi "AccessDenied\|403\|Forbidden"; then
+	PASS=$((PASS + 1))
+	printf "  \033[32mPASS\033[0m  read-only: DeleteObject -> denied (403)\n"
+else
+	FAIL=$((FAIL + 1))
+	ERRORS+=("read-only DeleteObject should be denied: $S3_OUT")
+	printf "  \033[31mFAIL\033[0m  read-only: DeleteObject should be denied\n"
+fi
+
+# Invalid credential should fail
+S3_OUT=$(s3api "GK_INVALID_KEY" "invalid_secret" list-buckets 2>&1)
+if echo "$S3_OUT" | grep -qi "InvalidAccessKeyId\|SignatureDoesNotMatch\|403\|401\|error"; then
+	PASS=$((PASS + 1))
+	printf "  \033[32mPASS\033[0m  invalid credential -> rejected\n"
+else
+	FAIL=$((FAIL + 1))
+	ERRORS+=("invalid credential should be rejected: $S3_OUT")
+	printf "  \033[31mFAIL\033[0m  invalid credential should be rejected\n"
+fi
+
+# ─── 18. S3 Credential Revocation ───────────────────────────────────────────
+
+section "S3 Credential Revocation"
+
+# Create a disposable credential for revoke test
+request POST "/admin/s3/credentials" \
+	"{\"name\":\"smoke-s3-revoke\",\"policy\":$FULL_S3_POLICY}" \
+	"X-Admin-Key: $ADMIN_KEY"
+assert_status "create credential for revoke -> 200" 200
+S3_REVOKE_AK=$(echo "$BODY" | jq -r '.result.credential.access_key_id')
+S3_REVOKE_SK=$(echo "$BODY" | jq -r '.result.credential.secret_access_key')
+CREATED_S3_CREDS+=("$S3_REVOKE_AK")
+
+# Verify it works before revocation
+S3_OUT=$(s3api "$S3_REVOKE_AK" "$S3_REVOKE_SK" list-buckets)
+if echo "$S3_OUT" | jq -e '.Buckets' >/dev/null 2>&1; then
+	PASS=$((PASS + 1))
+	printf "  \033[32mPASS\033[0m  pre-revoke: ListBuckets works\n"
+else
+	FAIL=$((FAIL + 1))
+	ERRORS+=("pre-revoke ListBuckets should work: $S3_OUT")
+	printf "  \033[31mFAIL\033[0m  pre-revoke: ListBuckets\n"
+fi
+
+# Revoke it
+request DELETE "/admin/s3/credentials/$S3_REVOKE_AK" "X-Admin-Key: $ADMIN_KEY"
+assert_status "revoke S3 credential -> 200" 200
+
+# Verify it's denied after revocation
+S3_OUT=$(s3api "$S3_REVOKE_AK" "$S3_REVOKE_SK" list-buckets 2>&1)
+if echo "$S3_OUT" | grep -qi "InvalidAccessKeyId\|403\|revoked\|error"; then
+	PASS=$((PASS + 1))
+	printf "  \033[32mPASS\033[0m  post-revoke: ListBuckets -> rejected\n"
+else
+	FAIL=$((FAIL + 1))
+	ERRORS+=("post-revoke ListBuckets should be rejected: $S3_OUT")
+	printf "  \033[31mFAIL\033[0m  post-revoke: ListBuckets should be rejected\n"
+fi
+
+# ─── 19. S3 Analytics ───────────────────────────────────────────────────────
+
+section "S3 Analytics"
+
+sleep 1
+
+request GET "/admin/s3/analytics/events" "X-Admin-Key: $ADMIN_KEY"
+assert_status "S3 events -> 200" 200
+S3_EVENT_COUNT=$(echo "$BODY" | jq '.result | length')
+if [[ "$S3_EVENT_COUNT" -gt 0 ]]; then
+	PASS=$((PASS + 1))
+	printf "  \033[32mPASS\033[0m  S3 event count > 0 (got %s)\n" "$S3_EVENT_COUNT"
+else
+	FAIL=$((FAIL + 1))
+	ERRORS+=("S3 event count should be > 0")
+	printf "  \033[31mFAIL\033[0m  S3 event count > 0 (got %s)\n" "$S3_EVENT_COUNT"
+fi
+
+request GET "/admin/s3/analytics/summary" "X-Admin-Key: $ADMIN_KEY"
+assert_status "S3 summary -> 200" 200
+assert_json "S3 summary has total_requests" '.result.total_requests | . > 0' "true"
+
+fi  # end SKIP_S3
+
+# ─── 20. API Route 404s ─────────────────────────────────────────────────────
 
 section "API 404s"
 
@@ -680,10 +983,24 @@ for kid in "${CREATED_KEYS[@]}"; do
 done
 printf "  Revoked %d smoke-test keys\n" "${#CREATED_KEYS[@]}"
 
+# Revoke all created S3 credentials
+for cid in "${CREATED_S3_CREDS[@]}"; do
+	curl -s -X DELETE "${BASE}/admin/s3/credentials/${cid}" \
+		-H "X-Admin-Key: $ADMIN_KEY" >/dev/null 2>&1 || true
+done
+printf "  Revoked %d S3 credentials\n" "${#CREATED_S3_CREDS[@]}"
+
 # Revoke the upstream token registered at the start
 curl -s -X DELETE "${BASE}/admin/upstream-tokens/${UPSTREAM_TOKEN_ID}" \
 	-H "X-Admin-Key: $ADMIN_KEY" >/dev/null 2>&1
 printf "  Revoked upstream token %s\n" "$UPSTREAM_TOKEN_ID"
+
+# Revoke the upstream R2 endpoint if created
+if [[ -n "${S3_UPSTREAM_ID:-}" ]]; then
+	curl -s -X DELETE "${BASE}/admin/upstream-r2/${S3_UPSTREAM_ID}" \
+		-H "X-Admin-Key: $ADMIN_KEY" >/dev/null 2>&1
+	printf "  Revoked upstream R2 %s\n" "$S3_UPSTREAM_ID"
+fi
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 

@@ -14,13 +14,15 @@ CREATE TABLE IF NOT EXISTS purge_events (
 	key_id TEXT NOT NULL,
 	zone_id TEXT NOT NULL,
 	purge_type TEXT NOT NULL,
-	cost INTEGER NOT NULL,
+	purge_target TEXT,
+	tokens INTEGER NOT NULL DEFAULT 1,
 	status INTEGER NOT NULL,
 	collapsed TEXT,
 	upstream_status INTEGER,
 	duration_ms INTEGER NOT NULL,
 	response_detail TEXT,
 	created_by TEXT,
+	flight_id TEXT,
 	created_at INTEGER NOT NULL
 );
 `;

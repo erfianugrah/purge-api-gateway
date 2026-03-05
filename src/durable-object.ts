@@ -1,11 +1,12 @@
 import { DurableObject } from 'cloudflare:workers';
 import { TokenBucket } from './token-bucket';
+import { RequestCollapser } from './request-collapse';
 import { IamManager } from './iam';
 import { S3CredentialManager } from './s3/iam';
 import { UpstreamTokenManager } from './upstream-tokens';
 import { UpstreamR2Manager } from './s3/upstream-r2';
 import { ConfigManager } from './config-registry';
-import type { PurgeBody, ConsumeResult, CreateKeyRequest, AuthResult, ApiKey, PurgeResult } from './types';
+import type { PurgeBody, ConsumeResult, CreateKeyRequest, AuthResult, ApiKey, PurgeResult, RateClass } from './types';
 import type { S3Credential, CreateS3CredentialRequest } from './s3/types';
 import type { UpstreamToken, CreateUpstreamTokenRequest } from './upstream-tokens';
 import type { UpstreamR2, CreateUpstreamR2Request, R2Credentials } from './s3/upstream-r2';
@@ -32,6 +33,7 @@ function buildRateLimitResult(name: string, bucket: TokenBucket, consumeResult: 
 		},
 		collapsed: false,
 		reachedUpstream: false,
+		flightId: generateFlightId(),
 		rateLimitInfo: {
 			remaining: consumeResult.remaining,
 			secondsUntilRefill: consumeResult.retryAfterSec,
@@ -39,6 +41,13 @@ function buildRateLimitResult(name: string, bucket: TokenBucket, consumeResult: 
 			rate: bucket.rate,
 		},
 	};
+}
+
+/** Generate a short random flight identifier (8 hex chars). */
+function generateFlightId(): string {
+	const bytes = new Uint8Array(4);
+	crypto.getRandomValues(bytes);
+	return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 // ─── Durable Object ─────────────────────────────────────────────────────────
@@ -55,9 +64,8 @@ export class Gatekeeper extends DurableObject<Env> {
 	/** Per-key rate limit buckets. Lazily created when a key with custom limits is first used. */
 	private keyBuckets = new Map<string, { bulk: TokenBucket; single: TokenBucket }>();
 
-	/** DO-level request collapsing map. Key = zoneId\0bodyText, cleaned up after settle + grace. */
-	private inflightDO = new Map<string, Promise<PurgeResult>>();
-	private static DO_COLLAPSE_GRACE_MS = 50;
+	/** DO-level request collapsing. */
+	private collapser = new RequestCollapser<PurgeResult>();
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
@@ -109,43 +117,34 @@ export class Gatekeeper extends DurableObject<Env> {
 	async purge(
 		zoneId: string,
 		bodyText: string,
-		type: 'single' | 'bulk',
-		cost: number,
+		rateClass: RateClass,
+		tokens: number,
 		upstreamToken: string,
 		keyId?: string,
 	): Promise<PurgeResult> {
 		// Per-key rate limit check (runs before collapsing — each key's budget is independent)
 		if (keyId) {
-			const keyResult = this.checkPerKeyRateLimit(keyId, type, cost);
+			const keyResult = this.checkPerKeyRateLimit(keyId, rateClass, tokens);
 			if (keyResult) return keyResult;
 		}
 
 		// DO-level collapsing — key includes zoneId since multiple zones share this DO
 		const collapseKey = `${zoneId}\0${bodyText}`;
-		const existing = this.inflightDO.get(collapseKey);
-		if (existing) {
-			const result = await existing;
+		const { result, collapsed } = await this.collapser.collapseOrCreate(collapseKey, () =>
+			this.doPurge(zoneId, bodyText, rateClass, tokens, upstreamToken),
+		);
+
+		if (collapsed) {
 			return { ...result, collapsed: true };
 		}
-
-		// Leader — consume tokens and make the upstream call
-		const promise = this.doPurge(zoneId, bodyText, type, cost, upstreamToken);
-
-		this.inflightDO.set(collapseKey, promise);
-		promise.finally(() => {
-			setTimeout(() => {
-				this.inflightDO.delete(collapseKey);
-			}, Gatekeeper.DO_COLLAPSE_GRACE_MS);
-		});
-
-		return promise;
+		return result;
 	}
 
 	/**
 	 * Check per-key rate limit. Returns a PurgeResult if rate limited, null if allowed.
 	 * Lazily creates per-key buckets from the key's stored rate limit config.
 	 */
-	private checkPerKeyRateLimit(keyId: string, type: 'single' | 'bulk', cost: number): PurgeResult | null {
+	private checkPerKeyRateLimit(keyId: string, rateClass: RateClass, tokens: number): PurgeResult | null {
 		const keyData = this.iam.getKey(keyId);
 		if (!keyData) return null;
 
@@ -153,7 +152,7 @@ export class Gatekeeper extends DurableObject<Env> {
 		const hasBulkLimit = key.bulk_rate !== null && key.bulk_bucket !== null;
 		const hasSingleLimit = key.single_rate !== null && key.single_bucket !== null;
 
-		if ((type === 'bulk' && !hasBulkLimit) || (type === 'single' && !hasSingleLimit)) {
+		if ((rateClass === 'bulk' && !hasBulkLimit) || (rateClass === 'single' && !hasSingleLimit)) {
 			return null;
 		}
 
@@ -166,11 +165,11 @@ export class Gatekeeper extends DurableObject<Env> {
 			this.keyBuckets.set(keyId, buckets);
 		}
 
-		const bucket = type === 'single' ? buckets.single : buckets.bulk;
-		const result = bucket.consume(cost);
+		const bucket = rateClass === 'single' ? buckets.single : buckets.bulk;
+		const result = bucket.consume(tokens);
 
 		if (!result.allowed) {
-			const name = type === 'single' ? 'purge-single-key' : 'purge-bulk-key';
+			const name = rateClass === 'single' ? 'purge-single-key' : 'purge-bulk-key';
 			return buildRateLimitResult(name, bucket, result, `Per-key rate limit exceeded. Retry after ${result.retryAfterSec} second(s).`);
 		}
 
@@ -180,14 +179,14 @@ export class Gatekeeper extends DurableObject<Env> {
 	private async doPurge(
 		zoneId: string,
 		bodyText: string,
-		type: 'single' | 'bulk',
-		cost: number,
+		rateClass: RateClass,
+		tokens: number,
 		upstreamToken: string,
 	): Promise<PurgeResult> {
-		const bucket = type === 'single' ? this.singleBucket : this.bulkBucket;
-		const consumeResult = bucket.consume(cost);
+		const bucket = rateClass === 'single' ? this.singleBucket : this.bulkBucket;
+		const consumeResult = bucket.consume(tokens);
 
-		const name = type === 'single' ? 'purge-single' : 'purge-bulk';
+		const name = rateClass === 'single' ? 'purge-single' : 'purge-bulk';
 		const window = Math.round(bucket.bucketSize / bucket.rate);
 
 		if (!consumeResult.allowed) {
@@ -222,6 +221,7 @@ export class Gatekeeper extends DurableObject<Env> {
 				headers: { 'Content-Type': 'application/json' },
 				collapsed: false,
 				reachedUpstream: false,
+				flightId: generateFlightId(),
 				rateLimitInfo: {
 					remaining: bucket.getRemaining(),
 					secondsUntilRefill: bucket.getSecondsUntilRefill(),
@@ -230,6 +230,8 @@ export class Gatekeeper extends DurableObject<Env> {
 				},
 			};
 		}
+
+		const flightId = generateFlightId();
 
 		// Handle upstream 429 — drain bucket
 		if (upstreamResponse.status === 429) {
@@ -246,6 +248,7 @@ export class Gatekeeper extends DurableObject<Env> {
 				},
 				collapsed: false,
 				reachedUpstream: true,
+				flightId,
 				rateLimitInfo: {
 					remaining: 0,
 					secondsUntilRefill: Number(retryAfter),
@@ -277,6 +280,7 @@ export class Gatekeeper extends DurableObject<Env> {
 			headers: responseHeaders,
 			collapsed: false,
 			reachedUpstream: true,
+			flightId,
 			rateLimitInfo: {
 				remaining,
 				secondsUntilRefill,
@@ -288,13 +292,13 @@ export class Gatekeeper extends DurableObject<Env> {
 
 	// ─── RPC methods ────────────────────────────────────────────────────
 
-	async consume(type: 'single' | 'bulk', count: number): Promise<ConsumeResult> {
-		const bucket = type === 'single' ? this.singleBucket : this.bulkBucket;
+	async consume(rateClass: RateClass, count: number): Promise<ConsumeResult> {
+		const bucket = rateClass === 'single' ? this.singleBucket : this.bulkBucket;
 		return bucket.consume(count);
 	}
 
-	async getRateLimitInfo(type: 'single' | 'bulk') {
-		const bucket = type === 'single' ? this.singleBucket : this.bulkBucket;
+	async getRateLimitInfo(rateClass: RateClass) {
+		const bucket = rateClass === 'single' ? this.singleBucket : this.bulkBucket;
 		return {
 			remaining: bucket.getRemaining(),
 			secondsUntilRefill: bucket.getSecondsUntilRefill(),
@@ -303,8 +307,8 @@ export class Gatekeeper extends DurableObject<Env> {
 		};
 	}
 
-	async drainBucket(type: 'single' | 'bulk'): Promise<void> {
-		const bucket = type === 'single' ? this.singleBucket : this.bulkBucket;
+	async drainBucket(rateClass: RateClass): Promise<void> {
+		const bucket = rateClass === 'single' ? this.singleBucket : this.bulkBucket;
 		bucket.drain();
 	}
 

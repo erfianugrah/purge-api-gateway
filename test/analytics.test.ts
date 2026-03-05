@@ -103,9 +103,11 @@ describe('Analytics — event logging', () => {
 
 		const event = data.result[0];
 		expect(event.zone_id).toBe(ZONE_ID);
-		expect(event.purge_type).toBe('bulk');
+		expect(event.purge_type).toBe('host');
+		expect(event.purge_target).toBe('example.com');
 		expect(event.status).toBe(200);
-		expect(event.cost).toBe(1);
+		expect(event.tokens).toBe(1);
+		expect(event.flight_id).toMatch(/^[0-9a-f]{8}$/);
 	});
 
 	it('summary aggregates events correctly', async () => {
@@ -133,7 +135,7 @@ describe('Analytics — event logging', () => {
 		expect(data.result.total_requests).toBeGreaterThanOrEqual(2);
 		expect(data.result.total_urls_purged).toBeGreaterThanOrEqual(2);
 		expect(data.result.by_status['200']).toBeGreaterThanOrEqual(2);
-		expect(data.result.by_purge_type['bulk']).toBeGreaterThanOrEqual(2);
+		expect((data.result.by_purge_type['host'] ?? 0) + (data.result.by_purge_type['tag'] ?? 0)).toBeGreaterThanOrEqual(2);
 	});
 });
 

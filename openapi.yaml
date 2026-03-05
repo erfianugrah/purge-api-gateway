@@ -330,7 +330,7 @@ components:
 
     PurgeEvent:
       type: object
-      required: [id, key_id, zone_id, purge_type, cost, status, duration_ms, created_at]
+      required: [id, key_id, zone_id, purge_type, tokens, status, duration_ms, created_at]
       properties:
         id:
           type: integer
@@ -341,9 +341,23 @@ components:
           type: string
         purge_type:
           type: string
-          enum: [single, bulk]
-        cost:
+          enum: [host, tag, prefix, url, everything]
+          description: >
+            The type of purge operation. `url` = single-file purge by URL,
+            `host`/`tag`/`prefix` = bulk purge by that dimension,
+            `everything` = purge_everything.
+        purge_target:
+          type: ['string', 'null']
+          description: >
+            Human-readable summary of what was purged. For `url` purges,
+            the comma-separated URLs (with `[Header:value]` for custom cache keys).
+            For `host`/`tag`/`prefix`, the values. For `everything`, `"*"`.
+            Truncated to 4 KB. `null` for events recorded before this field was added.
+        tokens:
           type: integer
+          description: >
+            Rate-limit tokens consumed by this request. For `url` purges,
+            equals the number of URLs. For bulk types, always 1.
         status:
           type: integer
         collapsed:
@@ -364,7 +378,7 @@ components:
         created_by:
           type: ['string', 'null']
           description: >
-            Identity of the caller — the API key ID used for the purge request.
+            Identity of the caller — 'via API key' for token auth, email for Access SSO.
         created_at:
           type: integer
           description: Unix timestamp (ms).
@@ -395,7 +409,7 @@ components:
           additionalProperties:
             type: integer
           examples:
-            - { 'single': 30, 'bulk': 18 }
+            - { 'host': 20, 'tag': 10, 'url': 15, 'everything': 3 }
         collapsed_count:
           type: integer
         avg_duration_ms:

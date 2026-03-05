@@ -10,8 +10,11 @@ import { PURGE_EVENTS_TABLE_SQL, PURGE_EVENTS_INDEX_ZONE_SQL, PURGE_EVENTS_INDEX
 export interface PurgeEvent {
 	key_id: string;
 	zone_id: string;
-	purge_type: 'single' | 'bulk';
-	cost: number;
+	purge_type: string;
+	/** Human-readable summary of the purge target — hosts, URLs, tags, prefixes, or "all". Truncated to 4 KB. */
+	purge_target: string | null;
+	/** Rate-limit tokens consumed by this request. For url purges: number of URLs. For bulk types: 1. */
+	tokens: number;
 	status: number;
 	collapsed: string | false;
 	upstream_status: number | null;
@@ -19,8 +22,10 @@ export interface PurgeEvent {
 	created_at: number; // unix ms
 	/** Truncated upstream response for debugging (CF API errors, etc.). */
 	response_detail: string | null;
-	/** Identity of the caller — Access JWT email, or key_id for API-key-only requests. */
+	/** Identity of the caller — 'via API key' for token auth, email for Access SSO. */
 	created_by: string | null;
+	/** Links a leader request to its collapsed followers — all share the same flight_id. */
+	flight_id: string;
 }
 
 async function ensureTables(db: D1Database): Promise<void> {
@@ -35,20 +40,22 @@ export async function logPurgeEvent(db: D1Database, event: PurgeEvent): Promise<
 		await ensureTables(db);
 		await db
 			.prepare(
-				`INSERT INTO purge_events (key_id, zone_id, purge_type, cost, status, collapsed, upstream_status, duration_ms, response_detail, created_by, created_at)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				`INSERT INTO purge_events (key_id, zone_id, purge_type, purge_target, tokens, status, collapsed, upstream_status, duration_ms, response_detail, created_by, flight_id, created_at)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			)
 			.bind(
 				event.key_id,
 				event.zone_id,
 				event.purge_type,
-				event.cost,
+				event.purge_target,
+				event.tokens,
 				event.status,
 				event.collapsed || null,
 				event.upstream_status,
 				event.duration_ms,
 				event.response_detail,
 				event.created_by,
+				event.flight_id,
 				event.created_at,
 			)
 			.run();
@@ -150,7 +157,7 @@ export async function querySummary(db: D1Database, query: AnalyticsQuery): Promi
 	const where = conditions.length > 0 ? conditions.join(' AND ') : '1=1';
 
 	const [totalRow, statusRows, typeRows, collapsedRow, durationRow] = await db.batch([
-		db.prepare(`SELECT COUNT(*) as cnt, SUM(cost) as total_urls_purged FROM purge_events WHERE ${where}`).bind(...params),
+		db.prepare(`SELECT COUNT(*) as cnt, SUM(tokens) as total_urls_purged FROM purge_events WHERE ${where}`).bind(...params),
 		db.prepare(`SELECT status, COUNT(*) as cnt FROM purge_events WHERE ${where} GROUP BY status`).bind(...params),
 		db.prepare(`SELECT purge_type, COUNT(*) as cnt FROM purge_events WHERE ${where} GROUP BY purge_type`).bind(...params),
 		db.prepare(`SELECT COUNT(*) as cnt FROM purge_events WHERE ${where} AND collapsed IS NOT NULL`).bind(...params),

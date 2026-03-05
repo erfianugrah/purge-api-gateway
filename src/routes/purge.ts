@@ -1,21 +1,20 @@
 import { Hono } from 'hono';
+import { RequestCollapser } from '../request-collapse';
 import { logPurgeEvent } from '../analytics';
 import { getStub } from '../do-stub';
 import type { PurgeEvent } from '../analytics';
 import type { PurgeBody, ParsedPurgeRequest, PurgeResult, HonoEnv } from '../types';
-import type { Gatekeeper } from '../durable-object';
 
 // ─── Per-isolate request collapsing ─────────────────────────────────────────
 
-const ISOLATE_COLLAPSE_GRACE_MS = 50;
-const inflightIsolate = new Map<string, Promise<PurgeResult>>();
+const isolateCollapser = new RequestCollapser<PurgeResult>();
 
 /**
  * Clear the isolate-level inflight cache.
  * @internal Exported for testing only — do not use in production code.
  */
 export function __testClearInflightCache() {
-	inflightIsolate.clear();
+	isolateCollapser.__testClear();
 }
 
 // ─── Route ──────────────────────────────────────────────────────────────────
@@ -88,7 +87,8 @@ purgeRoute.post('/v1/zones/:zoneId/purge_cache', async (c) => {
 	}
 
 	log.purgeType = parsed.type;
-	log.cost = parsed.cost;
+	log.rateClass = parsed.rateClass;
+	log.tokens = parsed.tokens;
 
 	// Resolve upstream CF API token for this zone
 	const upstreamToken = await stub.resolveUpstreamToken(zoneId);
@@ -123,24 +123,18 @@ purgeRoute.post('/v1/zones/:zoneId/purge_cache', async (c) => {
 	// ── Isolate-level request collapsing ────────────────────────────────
 
 	const collapseKey = `${zoneId}\0${bodyText}`;
-	let result: PurgeResult;
-	let collapsedAtIsolate = false;
-
-	const existingFlight = inflightIsolate.get(collapseKey);
-	if (existingFlight) {
-		try {
-			result = await existingFlight;
-			collapsedAtIsolate = true;
-		} catch {
-			inflightIsolate.delete(collapseKey);
-			result = await createAndTrackFlight(collapseKey, stub, zoneId, bodyText, parsed, upstreamToken, keyId);
-		}
-	} else {
-		result = await createAndTrackFlight(collapseKey, stub, zoneId, bodyText, parsed, upstreamToken, keyId);
-	}
+	const {
+		result,
+		collapsed: collapsedAtIsolate,
+		flightId: isolateFlightId,
+	} = await isolateCollapser.collapseOrCreate(collapseKey, () =>
+		stub.purge(zoneId, bodyText, parsed.rateClass, parsed.tokens, upstreamToken, keyId),
+	);
 
 	// Determine collapse level for logging
 	const collapseLevel = collapsedAtIsolate ? 'isolate' : result.collapsed ? 'do' : false;
+	// Use the isolate-level flightId if collapsed at isolate, otherwise the DO's flightId
+	const flightId = collapsedAtIsolate ? isolateFlightId : result.flightId;
 	log.collapsed = collapseLevel;
 	log.rateLimitAllowed = result.status !== 429 || !!collapseLevel;
 	log.rateLimitRemaining = result.rateLimitInfo.remaining;
@@ -180,13 +174,15 @@ purgeRoute.post('/v1/zones/:zoneId/purge_cache', async (c) => {
 			key_id: keyId,
 			zone_id: zoneId,
 			purge_type: parsed.type,
-			cost: parsed.cost,
+			purge_target: parsed.target,
+			tokens: parsed.tokens,
 			status: result.status,
 			collapsed: collapseLevel,
 			upstream_status: !collapseLevel && result.reachedUpstream ? result.status : null,
 			duration_ms: Date.now() - start,
 			response_detail: responseDetail,
-			created_by: keyId,
+			created_by: 'via API key',
+			flight_id: flightId,
 			created_at: Date.now(),
 		};
 		c.executionCtx.waitUntil(logPurgeEvent(env.ANALYTICS_DB, event));
@@ -200,30 +196,7 @@ purgeRoute.post('/v1/zones/:zoneId/purge_cache', async (c) => {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function createAndTrackFlight(
-	collapseKey: string,
-	stub: DurableObjectStub<Gatekeeper>,
-	zoneId: string,
-	bodyText: string,
-	parsed: ParsedPurgeRequest,
-	upstreamToken: string,
-	keyId?: string,
-): Promise<PurgeResult> {
-	const promise = stub.purge(zoneId, bodyText, parsed.type, parsed.cost, upstreamToken, keyId);
-
-	inflightIsolate.set(collapseKey, promise);
-	promise.finally(() => {
-		setTimeout(() => {
-			if (inflightIsolate.get(collapseKey) === promise) {
-				inflightIsolate.delete(collapseKey);
-			}
-		}, ISOLATE_COLLAPSE_GRACE_MS);
-	});
-
-	return promise;
-}
-
-/** Classify a purge request body into type (single/bulk) and cost. */
+/** Classify a purge request body into type, rate-limit class, token cost, and human-readable target. */
 export function classifyPurge(body: PurgeBody, limits: { singleMaxOps: number; bulkMaxOps: number }): ParsedPurgeRequest {
 	const { singleMaxOps, bulkMaxOps } = limits;
 
@@ -231,27 +204,69 @@ export function classifyPurge(body: PurgeBody, limits: { singleMaxOps: number; b
 		if (body.files.length > singleMaxOps) {
 			throw new Error(`files array has ${body.files.length} items, max is ${singleMaxOps}`);
 		}
-		return { type: 'single', cost: body.files.length, body };
+		const target = summarizeFiles(body.files);
+		return { type: 'url', rateClass: 'single', tokens: body.files.length, target, body };
 	}
 
 	if ('purge_everything' in body) {
 		if (body.purge_everything !== true) {
 			throw new Error('purge_everything must be boolean true');
 		}
-		return { type: 'bulk', cost: 1, body };
+		return { type: 'everything', rateClass: 'bulk', tokens: 1, target: '*', body };
 	}
 
-	const hasBulk =
-		(body.hosts && body.hosts.length > 0) || (body.tags && body.tags.length > 0) || (body.prefixes && body.prefixes.length > 0);
+	// Hosts, tags, prefixes — all bulk rate-limited. Pick the dominant type.
+	const hostCount = body.hosts?.length ?? 0;
+	const tagCount = body.tags?.length ?? 0;
+	const prefixCount = body.prefixes?.length ?? 0;
+	const totalOps = hostCount + tagCount + prefixCount;
 
-	if (hasBulk) {
-		const totalOps = (body.hosts?.length || 0) + (body.tags?.length || 0) + (body.prefixes?.length || 0);
-
+	if (totalOps > 0) {
 		if (totalOps > bulkMaxOps) {
 			throw new Error(`Total bulk operations is ${totalOps}, max per request is ${bulkMaxOps}`);
 		}
-		return { type: 'bulk', cost: 1, body };
+		// Determine the specific type — if mixed, pick the first non-empty
+		let type: 'host' | 'tag' | 'prefix' = 'host';
+		if (hostCount > 0) type = 'host';
+		else if (tagCount > 0) type = 'tag';
+		else if (prefixCount > 0) type = 'prefix';
+
+		const target = summarizeBulk(body);
+		return { type, rateClass: 'bulk', tokens: 1, target, body };
 	}
 
 	throw new Error('Request body must contain one of: files, hosts, tags, prefixes, or purge_everything');
+}
+
+/** Build a human-readable target string for URL purges. Handles plain strings and {url, headers} objects. */
+function summarizeFiles(files: (string | { url: string; headers?: Record<string, string> })[]): string {
+	const parts: string[] = [];
+	for (const f of files) {
+		if (typeof f === 'string') {
+			parts.push(f);
+		} else {
+			// Custom cache key — include header info
+			const hdrs = f.headers
+				? Object.entries(f.headers)
+						.map(([k, v]) => `${k}:${v}`)
+						.join(', ')
+				: '';
+			parts.push(hdrs ? `${f.url} [${hdrs}]` : f.url);
+		}
+	}
+	return truncateTarget(parts.join(', '));
+}
+
+/** Build a human-readable target string for bulk purges (hosts, tags, prefixes). */
+function summarizeBulk(body: PurgeBody): string {
+	const segments: string[] = [];
+	if (body.hosts?.length) segments.push(body.hosts.join(', '));
+	if (body.tags?.length) segments.push(body.tags.map((t) => `tag:${t}`).join(', '));
+	if (body.prefixes?.length) segments.push(body.prefixes.map((p) => `prefix:${p}`).join(', '));
+	return truncateTarget(segments.join('; '));
+}
+
+/** Truncate target string to fit in a D1 TEXT column without bloating storage. */
+function truncateTarget(s: string): string {
+	return s.length > 4096 ? s.slice(0, 4096) : s;
 }

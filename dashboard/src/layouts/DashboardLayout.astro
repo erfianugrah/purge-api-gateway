@@ -43,15 +43,16 @@ const seenSections = new Set<string>();
           <div class="flex h-14 items-center gap-2 border-b border-border px-4">
             <div class="flex h-8 w-8 items-center justify-center rounded-md bg-lv-purple/10">
               <svg
-                class="h-5 w-5 text-lv-purple"
+                class="h-5 w-5"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
+                stroke-width="1.8"
                 stroke-linejoin="round"
               >
-                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                <path class="text-lv-purple" d="M12 2 L3 6.5 L3 12 C3 18.5 6.8 23 12 24.5 C17.2 23 21 18.5 21 12 L21 6.5 Z" stroke="currentColor" />
+                <circle cx="12" cy="11" r="2.5" fill="currentColor" class="text-lv-purple" />
+                <rect x="11" y="13" width="2" height="4" rx="0.8" fill="currentColor" class="text-lv-purple" />
               </svg>
             </div>
             <span
