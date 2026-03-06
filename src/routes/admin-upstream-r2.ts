@@ -44,6 +44,18 @@ adminUpstreamR2App.post('/', async (c) => {
 		console.log(JSON.stringify(log));
 		return c.json({ success: false, errors: [{ code: 400, message: 'Required field: endpoint (string URL)' }] }, 400);
 	}
+	try {
+		const parsed = new URL(raw.endpoint);
+		if (parsed.protocol !== 'https:') {
+			log.status = 400;
+			console.log(JSON.stringify(log));
+			return c.json({ success: false, errors: [{ code: 400, message: 'endpoint must be an HTTPS URL' }] }, 400);
+		}
+	} catch {
+		log.status = 400;
+		console.log(JSON.stringify(log));
+		return c.json({ success: false, errors: [{ code: 400, message: 'endpoint must be a valid URL' }] }, 400);
+	}
 	if (!Array.isArray(raw.bucket_names) || raw.bucket_names.length === 0 || !raw.bucket_names.every((b: unknown) => typeof b === 'string')) {
 		log.status = 400;
 		console.log(JSON.stringify(log));

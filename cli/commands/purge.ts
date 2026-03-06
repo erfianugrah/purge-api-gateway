@@ -111,7 +111,10 @@ const hosts = defineCommand({
 		},
 	},
 	async run({ args }) {
-		const hostList = args.host.split(',').map((h) => h.trim());
+		const hostList = args.host
+			.split(',')
+			.map((h) => h.trim())
+			.filter(Boolean);
 		await doPurge(args, { hosts: hostList }, `hosts: ${hostList.join(', ')}`);
 	},
 });
@@ -128,7 +131,10 @@ const tags = defineCommand({
 		},
 	},
 	async run({ args }) {
-		const tagList = args.tag.split(',').map((t) => t.trim());
+		const tagList = args.tag
+			.split(',')
+			.map((t) => t.trim())
+			.filter(Boolean);
 		await doPurge(args, { tags: tagList }, `tags: ${tagList.join(', ')}`);
 	},
 });
@@ -148,7 +154,10 @@ const prefixes = defineCommand({
 		},
 	},
 	async run({ args }) {
-		const prefixList = args.prefix.split(',').map((p) => p.trim());
+		const prefixList = args.prefix
+			.split(',')
+			.map((p) => p.trim())
+			.filter(Boolean);
 		await doPurge(args, { prefixes: prefixList }, `prefixes: ${prefixList.join(', ')}`);
 	},
 });
@@ -168,7 +177,10 @@ const urls = defineCommand({
 		},
 	},
 	async run({ args }) {
-		const urlList = args.url.split(',').map((u) => u.trim());
+		const urlList = args.url
+			.split(',')
+			.map((u) => u.trim())
+			.filter(Boolean);
 		const desc = urlList.length === 1 ? `url: ${urlList[0]}` : `${urlList.length} URLs`;
 		await doPurge(args, { files: urlList }, desc);
 	},

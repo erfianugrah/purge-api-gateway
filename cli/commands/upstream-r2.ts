@@ -54,8 +54,7 @@ const create = defineCommand({
 		},
 		'secret-access-key': {
 			type: 'string',
-			description: 'R2 secret access key',
-			required: true,
+			description: 'R2 secret access key ($UPSTREAM_R2_SECRET_ACCESS_KEY)',
 		},
 		'r2-endpoint': {
 			type: 'string',
@@ -71,12 +70,18 @@ const create = defineCommand({
 	async run({ args }) {
 		const config = resolveConfig(args);
 
+		const secretAccessKey = args['secret-access-key'] || process.env['UPSTREAM_R2_SECRET_ACCESS_KEY'];
+		if (!secretAccessKey) {
+			error('Secret access key required. Set --secret-access-key or UPSTREAM_R2_SECRET_ACCESS_KEY env var.');
+			process.exit(1);
+		}
+
 		const bucketNames = args['bucket-names'] === '*' ? ['*'] : args['bucket-names'].split(',').map((s) => s.trim());
 
 		const body = {
 			name: args.name,
 			access_key_id: args['access-key-id'],
-			secret_access_key: args['secret-access-key'],
+			secret_access_key: secretAccessKey,
 			endpoint: args['r2-endpoint'],
 			bucket_names: bucketNames,
 		};

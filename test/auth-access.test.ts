@@ -180,6 +180,8 @@ describe('validateAccessJwt', () => {
 	});
 
 	it('returns null for unknown kid', async () => {
+		// Mock twice: first fetch returns known keys, retry after cache-clear returns same keys (kid still unknown)
+		mockCerts();
 		mockCerts();
 		const token = await createJwt(defaultPayload(), { kid: 'unknown-kid' });
 		const request = new Request('https://purge.example.com/admin/keys', {

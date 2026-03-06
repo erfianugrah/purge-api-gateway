@@ -82,15 +82,18 @@ describe('resolveConfig', () => {
 		process.env = { ...origEnv };
 	});
 
-	it('uses defaults when no args or env', () => {
+	it('exits when no endpoint configured', () => {
+		vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+
 		delete process.env['GATEKEEPER_URL'];
 		delete process.env['GATEKEEPER_ADMIN_KEY'];
 		delete process.env['GATEKEEPER_API_KEY'];
 
-		const config = resolveConfig({});
-		expect(config.baseUrl).toBe('https://purge.example.com');
-		expect(config.adminKey).toBeUndefined();
-		expect(config.apiKey).toBeUndefined();
+		resolveConfig({});
+		expect(process.exit).toHaveBeenCalledWith(1);
+
+		vi.restoreAllMocks();
 	});
 
 	it('prefers args over env vars', () => {

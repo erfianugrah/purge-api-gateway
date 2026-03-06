@@ -480,14 +480,14 @@ describe('IAM — expired key', () => {
 		const stub = getStub();
 
 		// Use a tiny fractional expires_in_days so the key expires almost immediately.
-		// 0.000002 days ~ 173ms — generous enough to survive DO init latency.
-		// Then wait 250ms to ensure we're well past expiry.
+		// 0.000012 days ~ 1037ms — generous enough to survive DO init latency and CI variance.
+		// Then wait 1500ms to ensure we're well past expiry.
 		const { key } = await createKeyWithPolicy('soon-expired', hostPolicy('example.com'), {
-			expires_in_days: 0.000002,
+			expires_in_days: 0.000012,
 		});
 
 		// Wait well past expiry
-		await new Promise((r) => setTimeout(r, 250));
+		await new Promise((r) => setTimeout(r, 1500));
 
 		const result = await stub.authorizeFromBody(key.id, ZONE_ID, {
 			hosts: ['example.com'],

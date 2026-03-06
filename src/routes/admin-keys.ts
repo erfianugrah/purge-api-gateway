@@ -65,9 +65,35 @@ adminKeysApp.post('/', async (c) => {
 		);
 	}
 
+	if (raw.expires_in_days !== undefined) {
+		if (typeof raw.expires_in_days !== 'number' || raw.expires_in_days <= 0 || !isFinite(raw.expires_in_days)) {
+			log.status = 400;
+			log.error = 'invalid_expires_in_days';
+			console.log(JSON.stringify(log));
+			return c.json({ success: false, errors: [{ code: 400, message: 'expires_in_days must be a positive finite number' }] }, 400);
+		}
+	}
+
 	const stub = getStub(c.env);
 
-	const rateLimit = raw.rate_limit as CreateKeyRequest['rate_limit'] | undefined;
+	const rateLimit =
+		raw.rate_limit != null && typeof raw.rate_limit === 'object'
+			? validateRateLimitFields(raw.rate_limit as Record<string, unknown>)
+			: undefined;
+	if (rateLimit === 'invalid') {
+		log.status = 400;
+		log.error = 'invalid_rate_limit';
+		console.log(JSON.stringify(log));
+		return c.json(
+			{
+				success: false,
+				errors: [
+					{ code: 400, message: 'rate_limit fields must be positive finite numbers (bulk_rate, bulk_bucket, single_rate, single_bucket)' },
+				],
+			},
+			400,
+		);
+	}
 	if (rateLimit) {
 		const gwConfig = await stub.getConfig();
 		const rateLimitError = validateRateLimits(rateLimit, gwConfig);
@@ -284,6 +310,27 @@ async function parseBulkBody(
 
 	const dryRun = raw.dry_run === true;
 	return { ids: ids as string[], dryRun };
+}
+
+/** Validate and extract rate_limit fields from raw input. Returns parsed object, undefined, or 'invalid'. */
+function validateRateLimitFields(raw: Record<string, unknown>): CreateKeyRequest['rate_limit'] | undefined | 'invalid' {
+	const fields = ['bulk_rate', 'bulk_bucket', 'single_rate', 'single_bucket'] as const;
+	const result: Record<string, number | null> = {};
+	let hasAny = false;
+	for (const field of fields) {
+		const val = raw[field];
+		if (val === undefined || val === null) {
+			result[field] = null;
+			continue;
+		}
+		if (typeof val !== 'number' || val <= 0 || !isFinite(val)) {
+			return 'invalid';
+		}
+		result[field] = val;
+		hasAny = true;
+	}
+	if (!hasAny) return undefined;
+	return result as unknown as CreateKeyRequest['rate_limit'];
 }
 
 /** Validate per-key rate limits against account defaults. Returns error string or null. */

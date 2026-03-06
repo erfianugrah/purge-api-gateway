@@ -177,7 +177,8 @@ function evalRegex(fieldValue: string | boolean, pattern: ConditionValue, negate
 
 /**
  * Glob-style wildcard matching. `*` matches any sequence of characters.
- * Case-insensitive.
+ * Case-insensitive — all wildcard comparisons ignore case by design.
+ * This affects action, resource, and condition value matching.
  */
 function evalWildcard(value: string, pattern: string): boolean {
 	// Convert glob to regex: escape all regex chars except *, then replace * with .*

@@ -9,7 +9,11 @@ export interface ClientConfig {
 }
 
 export function resolveConfig(args: { endpoint?: string; 'admin-key'?: string; 'api-key'?: string }): ClientConfig {
-	const baseUrl = (args.endpoint || process.env['GATEKEEPER_URL'] || 'https://purge.example.com').replace(/\/+$/, '');
+	const baseUrl = (args.endpoint || process.env['GATEKEEPER_URL'] || '').replace(/\/+$/, '');
+	if (!baseUrl) {
+		error('Endpoint required. Set --endpoint or GATEKEEPER_URL.');
+		process.exit(1);
+	}
 
 	const adminKey = args['admin-key'] || process.env['GATEKEEPER_ADMIN_KEY'];
 	const apiKey = args['api-key'] || process.env['GATEKEEPER_API_KEY'];

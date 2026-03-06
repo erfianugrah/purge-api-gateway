@@ -20,6 +20,8 @@ const SECURITY_HEADERS: Record<string, string> = {
 	'X-Frame-Options': 'DENY',
 	'Referrer-Policy': 'strict-origin-when-cross-origin',
 	'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), document-domain=()',
+	'Content-Security-Policy':
+		"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'",
 };
 
 // ─── App ────────────────────────────────────────────────────────────────────
@@ -73,6 +75,7 @@ export default {
 					error: e.message,
 				}),
 			);
+			throw e;
 		}
 	},
 };

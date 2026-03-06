@@ -1,6 +1,6 @@
 import { defineCommand } from 'citty';
 import { resolveConfig, request, assertOk } from '../client.js';
-import { success, error, label, formatDuration, dim } from '../ui.js';
+import { success, error, label, formatDuration, dim, printJson } from '../ui.js';
 
 export default defineCommand({
 	meta: { name: 'health', description: 'Check if the gateway is reachable' },
@@ -20,7 +20,7 @@ export default defineCommand({
 
 		if (args.json) {
 			assertOk(status, data);
-			console.log(JSON.stringify(data, null, 2));
+			printJson(data);
 			return;
 		}
 

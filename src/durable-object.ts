@@ -6,6 +6,7 @@ import { S3CredentialManager } from './s3/iam';
 import { UpstreamTokenManager } from './upstream-tokens';
 import { UpstreamR2Manager } from './s3/upstream-r2';
 import { ConfigManager } from './config-registry';
+import { generateFlightId } from './crypto';
 import type {
 	PurgeBody,
 	ConsumeResult,
@@ -51,13 +52,6 @@ function buildRateLimitResult(name: string, bucket: TokenBucket, consumeResult: 
 			rate: bucket.rate,
 		},
 	};
-}
-
-/** Generate a short random flight identifier (8 hex chars). */
-function generateFlightId(): string {
-	const bytes = new Uint8Array(4);
-	crypto.getRandomValues(bytes);
-	return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 // ─── Durable Object ─────────────────────────────────────────────────────────
@@ -132,6 +126,9 @@ export class Gatekeeper extends DurableObject<Env> {
 		upstreamToken: string,
 		keyId?: string,
 	): Promise<PurgeResult> {
+		// Guard: tokens must be positive to prevent rate limit bypass
+		if (tokens <= 0) tokens = 1;
+
 		// Per-key rate limit check (runs before collapsing — each key's budget is independent)
 		if (keyId) {
 			const keyResult = this.checkPerKeyRateLimit(keyId, rateClass, tokens);
@@ -168,9 +165,10 @@ export class Gatekeeper extends DurableObject<Env> {
 
 		let buckets = this.keyBuckets.get(keyId);
 		if (!buckets) {
+			const gwConfig = this.configManager.getConfig(this.env);
 			buckets = {
-				bulk: new TokenBucket(key.bulk_rate ?? 50, key.bulk_bucket ?? 500),
-				single: new TokenBucket(key.single_rate ?? 3000, key.single_bucket ?? 6000),
+				bulk: new TokenBucket(key.bulk_rate ?? gwConfig.bulk_rate, key.bulk_bucket ?? gwConfig.bulk_bucket_size),
+				single: new TokenBucket(key.single_rate ?? gwConfig.single_rate, key.single_bucket ?? gwConfig.single_bucket_size),
 			};
 			this.keyBuckets.set(keyId, buckets);
 		}

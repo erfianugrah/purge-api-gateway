@@ -171,7 +171,7 @@ async function main(): Promise<void> {
 	}
 	console.log(bold('═══════════════════════════════════════'));
 
-	process.exit(state.fail);
+	process.exit(state.fail > 0 ? 1 : 0);
 }
 
 // ─── Run ───────────────────────────────────────────────────────────────────

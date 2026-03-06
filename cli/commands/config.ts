@@ -80,21 +80,19 @@ const set = defineCommand({
 		const cfg = resolveConfig(args);
 
 		// Parse key=value pairs from positional args
-		const rawPairs = (args._ as unknown as string) || '';
-		const pairs = rawPairs
-			.split(/\s+/)
-			.filter(Boolean)
-			.map((pair: string) => {
-				const eqIdx = pair.indexOf('=');
-				if (eqIdx === -1) {
-					error(`Invalid format: "${pair}". Use key=value.`);
-					process.exit(1);
-				}
-				return {
-					key: pair.slice(0, eqIdx),
-					value: Number(pair.slice(eqIdx + 1)),
-				};
-			});
+		const rawArg = args._;
+		const rawParts = Array.isArray(rawArg) ? rawArg.map(String) : String(rawArg || '').split(/\s+/);
+		const pairs = rawParts.filter(Boolean).map((pair: string) => {
+			const eqIdx = pair.indexOf('=');
+			if (eqIdx === -1) {
+				error(`Invalid format: "${pair}". Use key=value.`);
+				process.exit(1);
+			}
+			return {
+				key: pair.slice(0, eqIdx),
+				value: Number(pair.slice(eqIdx + 1)),
+			};
+		});
 
 		if (pairs.length === 0) {
 			error('No key=value pairs provided. Usage: config set bulk_rate=100 single_rate=5000');

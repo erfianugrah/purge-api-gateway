@@ -61,6 +61,15 @@ adminS3App.post('/credentials', async (c) => {
 		);
 	}
 
+	if (raw.expires_in_days !== undefined) {
+		if (typeof raw.expires_in_days !== 'number' || raw.expires_in_days <= 0 || !isFinite(raw.expires_in_days)) {
+			log.status = 400;
+			log.error = 'invalid_expires_in_days';
+			console.log(JSON.stringify(log));
+			return c.json({ success: false, errors: [{ code: 400, message: 'expires_in_days must be a positive finite number' }] }, 400);
+		}
+	}
+
 	const identity = c.get('accessIdentity');
 	const req: CreateS3CredentialRequest = {
 		name: raw.name as string,
@@ -265,13 +274,25 @@ adminS3App.get('/analytics/events', async (c) => {
 		return c.json({ success: false, errors: [{ code: 503, message: 'Analytics not configured' }] }, 503);
 	}
 
+	const sinceRaw = c.req.query('since') ? Number(c.req.query('since')) : undefined;
+	const untilRaw = c.req.query('until') ? Number(c.req.query('until')) : undefined;
+	const limitRaw = c.req.query('limit') ? Number(c.req.query('limit')) : undefined;
+
+	if (
+		(sinceRaw !== undefined && isNaN(sinceRaw)) ||
+		(untilRaw !== undefined && isNaN(untilRaw)) ||
+		(limitRaw !== undefined && isNaN(limitRaw))
+	) {
+		return c.json({ success: false, errors: [{ code: 400, message: 'since, until, and limit must be valid numbers' }] }, 400);
+	}
+
 	const query: S3AnalyticsQuery = {
 		credential_id: c.req.query('credential_id') || undefined,
 		bucket: c.req.query('bucket') || undefined,
 		operation: c.req.query('operation') || undefined,
-		since: c.req.query('since') ? Number(c.req.query('since')) : undefined,
-		until: c.req.query('until') ? Number(c.req.query('until')) : undefined,
-		limit: c.req.query('limit') ? Number(c.req.query('limit')) : undefined,
+		since: sinceRaw,
+		until: untilRaw,
+		limit: limitRaw,
 	};
 
 	const events = await queryS3Events(c.env.ANALYTICS_DB, query);
@@ -294,12 +315,19 @@ adminS3App.get('/analytics/summary', async (c) => {
 		return c.json({ success: false, errors: [{ code: 503, message: 'Analytics not configured' }] }, 503);
 	}
 
+	const sinceRaw = c.req.query('since') ? Number(c.req.query('since')) : undefined;
+	const untilRaw = c.req.query('until') ? Number(c.req.query('until')) : undefined;
+
+	if ((sinceRaw !== undefined && isNaN(sinceRaw)) || (untilRaw !== undefined && isNaN(untilRaw))) {
+		return c.json({ success: false, errors: [{ code: 400, message: 'since and until must be valid numbers' }] }, 400);
+	}
+
 	const query: S3AnalyticsQuery = {
 		credential_id: c.req.query('credential_id') || undefined,
 		bucket: c.req.query('bucket') || undefined,
 		operation: c.req.query('operation') || undefined,
-		since: c.req.query('since') ? Number(c.req.query('since')) : undefined,
-		until: c.req.query('until') ? Number(c.req.query('until')) : undefined,
+		since: sinceRaw,
+		until: untilRaw,
 	};
 
 	const summary = await queryS3Summary(c.env.ANALYTICS_DB, query);

@@ -10,6 +10,8 @@
  * fire between requests — a known Cloudflare Workers runtime behaviour.
  */
 
+import { generateFlightId } from './crypto';
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 interface Flight<T> {
@@ -104,13 +106,4 @@ export class RequestCollapser<T> {
 	__testClear(): void {
 		this.inflight.clear();
 	}
-}
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-/** Generate a short random flight identifier (8 hex chars). */
-function generateFlightId(): string {
-	const bytes = new Uint8Array(4);
-	crypto.getRandomValues(bytes);
-	return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }

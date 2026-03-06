@@ -4,13 +4,20 @@ import type { R2Credentials } from './upstream-r2';
 // ─── Outbound re-signing ────────────────────────────────────────────────────
 // Uses aws4fetch to re-sign requests with resolved R2 credentials.
 
-/** Lazily-initialized AwsClient instances keyed by access_key_id. */
+/** Lazily-initialized AwsClient instances keyed by access_key_id. Bounded to prevent unbounded growth. */
+const MAX_CLIENT_CACHE_SIZE = 64;
 const clientCache = new Map<string, AwsClient>();
 
 /** Get or create the AwsClient for a given set of R2 credentials. */
 function getClient(creds: R2Credentials): AwsClient {
 	const existing = clientCache.get(creds.accessKeyId);
 	if (existing) return existing;
+
+	// Evict oldest entry if cache is full
+	if (clientCache.size >= MAX_CLIENT_CACHE_SIZE) {
+		const oldest = clientCache.keys().next().value!;
+		clientCache.delete(oldest);
+	}
 
 	const client = new AwsClient({
 		accessKeyId: creds.accessKeyId,

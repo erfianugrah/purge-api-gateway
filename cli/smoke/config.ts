@@ -27,8 +27,10 @@ export async function run(_ctx: SmokeContext): Promise<void> {
 
 	const afterPut = await admin('GET', '/admin/config');
 	assertJson('bulk_rate overridden to 99', afterPut.body?.result?.config?.bulk_rate, 99);
-	assertTruthy('overrides contains bulk_rate', afterPut.body?.result?.overrides?.bulk_rate !== undefined);
-	assertJson('overrides.bulk_rate.value is 99', afterPut.body?.result?.overrides?.bulk_rate?.value, 99);
+	const overrides = afterPut.body?.result?.overrides as Array<Record<string, unknown>> | undefined;
+	const bulkOverride = overrides?.find((o: Record<string, unknown>) => o.key === 'bulk_rate');
+	assertTruthy('overrides contains bulk_rate', bulkOverride !== undefined);
+	assertJson('overrides.bulk_rate.value is 99', bulkOverride?.value, '99');
 
 	// --- DELETE override (reset to default) ---
 
@@ -37,7 +39,9 @@ export async function run(_ctx: SmokeContext): Promise<void> {
 
 	const afterDel = await admin('GET', '/admin/config');
 	assertJson('bulk_rate reset to default', afterDel.body?.result?.config?.bulk_rate, defaultBulkRate);
-	assertJson('overrides no longer has bulk_rate', afterDel.body?.result?.overrides?.bulk_rate, undefined);
+	const afterDelOverrides = afterDel.body?.result?.overrides as Array<Record<string, unknown>> | undefined;
+	const afterDelBulk = afterDelOverrides?.find((o: Record<string, unknown>) => o.key === 'bulk_rate');
+	assertJson('overrides no longer has bulk_rate', afterDelBulk, undefined);
 
 	// --- DELETE non-existent key -> 404 ---
 

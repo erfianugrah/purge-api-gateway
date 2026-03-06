@@ -18,6 +18,8 @@ const EXPECTED_HEADERS: Record<string, string> = {
 	'x-frame-options': 'DENY',
 	'referrer-policy': 'strict-origin-when-cross-origin',
 	'permissions-policy': 'camera=(), microphone=(), geolocation=(), document-domain=()',
+	'content-security-policy':
+		"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'",
 };
 
 function expectSecurityHeaders(res: Response) {

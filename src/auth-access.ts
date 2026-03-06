@@ -128,7 +128,7 @@ export async function validateAccessJwt(request: Request, teamName: string, aud:
 	// Verify algorithm
 	if (jwt.header.alg !== 'RS256') return null;
 
-	// Fetch JWKS and find matching key
+	// Fetch JWKS and find matching key — retry once on kid miss (handles key rotation)
 	let keys: JsonWebKey[];
 	try {
 		keys = await getJwks(teamName);
@@ -136,8 +136,19 @@ export async function validateAccessJwt(request: Request, teamName: string, aud:
 		return null;
 	}
 
-	const jwk = keys.find((k) => (k as JsonWebKey & { kid?: string }).kid === jwt.header.kid);
-	if (!jwk) return null;
+	let jwk = keys.find((k) => (k as JsonWebKey & { kid?: string }).kid === jwt.header.kid);
+	if (!jwk) {
+		// Key not found — may be a rotation; force-refresh JWKS and retry once
+		try {
+			cachedKeys = null;
+			cachedAt = 0;
+			keys = await getJwks(teamName);
+		} catch {
+			return null;
+		}
+		jwk = keys.find((k) => (k as JsonWebKey & { kid?: string }).kid === jwt.header.kid);
+		if (!jwk) return null;
+	}
 
 	// Import key and verify signature
 	let cryptoKey: CryptoKey;

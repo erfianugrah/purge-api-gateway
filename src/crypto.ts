@@ -28,3 +28,10 @@ export async function timingSafeEqual(a: string, b: string): Promise<boolean> {
 export function queryAll<T>(sql: SqlStorage, query: string, ...params: unknown[]): T[] {
 	return sql.exec(query, ...params).toArray() as unknown as T[];
 }
+
+/** Generate a short random flight identifier (8 hex chars). */
+export function generateFlightId(): string {
+	const bytes = new Uint8Array(4);
+	crypto.getRandomValues(bytes);
+	return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}

@@ -49,8 +49,7 @@ const create = defineCommand({
 		},
 		token: {
 			type: 'string',
-			description: 'Cloudflare API token value',
-			required: true,
+			description: 'Cloudflare API token value ($UPSTREAM_CF_TOKEN)',
 		},
 		'zone-ids': {
 			type: 'string',
@@ -61,11 +60,17 @@ const create = defineCommand({
 	async run({ args }) {
 		const config = resolveConfig(args);
 
+		const tokenValue = args.token || process.env['UPSTREAM_CF_TOKEN'];
+		if (!tokenValue) {
+			error('Token required. Set --token or UPSTREAM_CF_TOKEN env var.');
+			process.exit(1);
+		}
+
 		const zoneIds = args['zone-ids'] === '*' ? ['*'] : args['zone-ids'].split(',').map((s) => s.trim());
 
 		const body = {
 			name: args.name,
-			token: args.token,
+			token: tokenValue,
 			zone_ids: zoneIds,
 		};
 
