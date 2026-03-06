@@ -172,10 +172,13 @@ Token/secret values are write-only — they can't be retrieved after registratio
 npm run dev              # wrangler dev (local)
 npm run build            # build dashboard + CLI
 npm run deploy           # build dashboard, then wrangler deploy
-npm test                 # run all tests (392 across worker + CLI)
+npm test                 # run all tests (482 across worker + CLI)
 npm run test:worker      # worker tests only
 npm run test:cli         # CLI tests only
 npx wrangler types       # regenerate types after changing wrangler.jsonc
+npm run preflight        # typecheck + lint + test + build (full CI check)
+npm run ship             # preflight + deploy
+npm run smoke            # E2E smoke tests against a live instance
 ```
 
 On first deploy, wrangler creates the DO namespace and runs the SQLite migration automatically.
@@ -251,7 +254,7 @@ Each API key has a policy document — a JSON structure with statements, modeled
 | **Action**    | `s3:GetObject`            | `purge:url`, `purge:host`, `purge:tag`, `s3:GetObject`, `s3:PutObject` |
 | **Resource**  | `arn:aws:s3:::bucket/*`   | `zone:<zone-id>`, `bucket:<name>`, `object:<bucket>/<key>`             |
 | **Condition** | `StringLike`, `IpAddress` | Expression engine: `eq`, `contains`, `starts_with`, `matches`, etc.    |
-| **Effect**    | Allow / Deny              | Allow only (deny-by-default). Explicit deny can be added later.        |
+| **Effect**    | Allow / Deny              | Allow / Deny. Explicit deny overrides allow (standard IAM precedence). |
 | **Policy**    | IAM policy document       | JSON document with statements, attached to API keys                    |
 
 ### Policy document
@@ -270,7 +273,13 @@ Each API key has a policy document — a JSON structure with statements, modeled
 }
 ```
 
-A key can have one policy document. The policy has one or more statements. A request is allowed if **any** statement allows it (OR across statements). Within a statement, **all** of the following must be true (AND):
+A key can have one policy document. The policy has one or more statements. Evaluation follows standard IAM precedence:
+
+1. If **any** deny statement matches → **denied** (explicit deny always wins)
+2. If **any** allow statement matches → **allowed**
+3. If nothing matches → **denied** (implicit deny)
+
+Within a single statement, **all** of the following must be true for it to match (AND):
 
 1. The requested **action** matches one of the statement's actions
 2. The targeted **resource** matches one of the statement's resources
@@ -354,6 +363,10 @@ Matching rules:
 | `in`           | string       | Value in a set (`{"value": ["a", "b"]}`)                                        |
 | `not_in`       | string       | Value not in set                                                                |
 | `wildcard`     | string       | Glob-style (`*` = any chars)                                                    |
+| `lt`           | numeric      | Less than (both sides coerced to number; NaN → condition fails)                 |
+| `gt`           | numeric      | Greater than                                                                    |
+| `lte`          | numeric      | Less than or equal                                                              |
+| `gte`          | numeric      | Greater than or equal                                                           |
 | `exists`       | any          | Field is present                                                                |
 | `not_exists`   | any          | Field is absent                                                                 |
 
@@ -370,6 +383,17 @@ Matching rules:
 | `url.query.<param>` | Parsed from URL                   | Specific query parameter                                |
 | `header.<name>`     | `files[].headers.<name>`          | Custom cache key header (e.g., `header.CF-Device-Type`) |
 | `purge_everything`  | `purge_everything` field          | Boolean — is this purge-everything?                     |
+
+**Request-level fields** (available on both purge and S3 requests):
+
+| Field              | Source                    | Description                          |
+| ------------------ | ------------------------- | ------------------------------------ |
+| `client_ip`        | `CF-Connecting-IP` header | Client IP address                    |
+| `client_country`   | `CF-IPCountry` header     | 2-letter ISO country code            |
+| `client_asn`       | `request.cf.asn`          | Autonomous System Number (as string) |
+| `time.hour`        | `Date.now()` at eval time | Hour of day, UTC (0–23)              |
+| `time.day_of_week` | `Date.now()` at eval time | Day of week (0=Sun, 6=Sat)           |
+| `time.iso`         | `Date.now()` at eval time | Full ISO-8601 timestamp              |
 
 **S3/R2 service:**
 
@@ -568,6 +592,81 @@ flowchart TD
 }
 ```
 
+**Deny — full access but protect the vault bucket from deletion:**
+
+```json
+{
+	"version": "2025-01-01",
+	"statements": [
+		{ "effect": "allow", "actions": ["s3:*"], "resources": ["*"] },
+		{
+			"effect": "deny",
+			"actions": ["s3:DeleteObject", "s3:DeleteBucket"],
+			"resources": ["bucket:vault", "object:vault/*"]
+		}
+	]
+}
+```
+
+**Deny — block purge-everything while allowing all other purge operations:**
+
+```json
+{
+	"version": "2025-01-01",
+	"statements": [
+		{ "effect": "deny", "actions": ["purge:everything"], "resources": ["*"] },
+		{
+			"effect": "allow",
+			"actions": ["purge:*"],
+			"resources": ["zone:aaaa1111bbbb2222cccc3333dddd4444"]
+		}
+	]
+}
+```
+
+**IP restriction — only allow purge from specific countries:**
+
+```json
+{
+	"version": "2025-01-01",
+	"statements": [
+		{
+			"effect": "allow",
+			"actions": ["purge:*"],
+			"resources": ["zone:*"],
+			"conditions": [{ "field": "client_country", "operator": "in", "value": ["US", "DE", "GB", "NL"] }]
+		}
+	]
+}
+```
+
+**Time-based — restrict S3 writes to business hours (UTC):**
+
+```json
+{
+	"version": "2025-01-01",
+	"statements": [
+		{
+			"effect": "allow",
+			"actions": ["s3:GetObject", "s3:ListBucket"],
+			"resources": ["*"]
+		},
+		{
+			"effect": "allow",
+			"actions": ["s3:PutObject", "s3:DeleteObject"],
+			"resources": ["*"],
+			"conditions": [
+				{ "field": "time.hour", "operator": "gte", "value": "9" },
+				{ "field": "time.hour", "operator": "lt", "value": "17" },
+				{
+					"not": { "field": "time.day_of_week", "operator": "in", "value": ["0", "6"] }
+				}
+			]
+		}
+	]
+}
+```
+
 ### Regex safety
 
 - Max pattern length: 256 characters
@@ -674,8 +773,6 @@ Non-200 responses from the upstream Cloudflare API (429, 500, etc.) are passed t
 
 ---
 
----
-
 ### S3 proxy — `GET|PUT|POST|DELETE|HEAD /s3/*`
 
 S3-compatible proxy to Cloudflare R2 with per-credential IAM policies. Clients use standard S3 SDKs pointed at `https://<gateway>/s3` as the endpoint. Path-style addressing only (no virtual-hosted buckets).
@@ -775,15 +872,39 @@ All require either `X-Admin-Key: <admin_key>` or a valid Cloudflare Access JWT (
 
 `name` and `policy` are required. `zone_id` is optional — omit it for a key that works on any zone. The response includes the key ID (`gw_<hex>`) — this is the Bearer token. Show it once to the user.
 
-Policy is validated at creation time: version must be `2025-01-01`, statements must have `effect: "allow"`, regex patterns are checked for catastrophic backtracking, per-key rate limits can't exceed account defaults.
+Policy is validated at creation time: version must be `2025-01-01`, statements must have `effect: "allow"` or `"deny"`, regex patterns are checked for catastrophic backtracking, per-key rate limits can't exceed account defaults.
 
 #### `GET /admin/keys?zone_id=<zone_id>[&status=active|revoked]` — list keys
 
 #### `GET /admin/keys/:id?zone_id=<zone_id>` — get key details
 
-#### `DELETE /admin/keys/:id?zone_id=<zone_id>` — revoke key
+#### `DELETE /admin/keys/:id?zone_id=<zone_id>[&permanent=true]` — revoke or delete key
 
-Soft delete. Sets `revoked = 1`. Cleans up any per-key rate limit buckets.
+Without `permanent`: soft revoke. Sets `revoked = 1`. Cleans up any per-key rate limit buckets.
+
+With `?permanent=true`: hard delete. Removes the key row entirely. Works on keys in any state (active or revoked). D1 analytics rows referencing this key are preserved as orphaned historical data.
+
+#### `POST /admin/keys/bulk-revoke` — bulk revoke keys
+
+#### `POST /admin/keys/bulk-delete` — bulk hard-delete keys
+
+Bulk operations for keys. Request body:
+
+```json
+{
+	"ids": ["gw_abc123...", "gw_def456..."],
+	"confirm_count": 2,
+	"dry_run": false
+}
+```
+
+Fat-finger guards:
+
+- `confirm_count` (required) — must exactly match the length of `ids`. Returns 400 if mismatched.
+- `dry_run` (optional, default false) — when `true`, returns a preview of what would happen without executing.
+- Array must be non-empty, max 100 items.
+
+Normal response includes per-item statuses: `revoked`, `deleted`, `already_revoked`, `not_found`. Dry-run response shows `current_status` and `would_become` for each item.
 
 #### `GET /admin/analytics/events?zone_id=<zone_id>[&key_id=...][&since=...][&until=...][&limit=...]`
 
@@ -822,9 +943,25 @@ Returns all credentials with secrets redacted.
 
 Returns credential metadata with secret redacted.
 
-#### `DELETE /admin/s3/credentials/:id` — revoke S3 credential
+#### `DELETE /admin/s3/credentials/:id[?permanent=true]` — revoke or delete S3 credential
 
-Soft revoke. The credential is immediately rejected on subsequent S3 requests (up to 60s cache TTL).
+Without `permanent`: soft revoke. The credential is immediately rejected on subsequent S3 requests (up to 60s cache TTL).
+
+With `?permanent=true`: hard delete. Removes the credential row entirely. D1 analytics rows are preserved.
+
+#### `POST /admin/s3/credentials/bulk-revoke` — bulk revoke S3 credentials
+
+#### `POST /admin/s3/credentials/bulk-delete` — bulk hard-delete S3 credentials
+
+Same semantics as key bulk operations. Request body uses `access_key_ids` instead of `ids`:
+
+```json
+{
+	"access_key_ids": ["GK1A2B3C...", "GK4D5E6F..."],
+	"confirm_count": 2,
+	"dry_run": false
+}
+```
 
 #### `GET /admin/s3/analytics/events[?credential_id=...][&bucket=...][&operation=...][&since=...][&until=...][&limit=...]`
 
@@ -1182,6 +1319,9 @@ npm run cli -- keys create --name test --zone-id <id> --policy '{"version":"2025
 npm run cli -- keys list --zone-id <id>
 npm run cli -- keys get --key-id gw_...  --zone-id <id>
 npm run cli -- keys revoke --key-id gw_... --zone-id <id>
+npm run cli -- keys revoke --key-id gw_... --zone-id <id> --permanent   # hard-delete
+npm run cli -- keys bulk-revoke --ids gw_a,gw_b --confirm               # without --confirm = dry-run
+npm run cli -- keys bulk-delete --ids gw_a,gw_b --confirm
 
 # Purge
 npm run cli -- purge hosts --host example.com --zone-id <id>
@@ -1198,6 +1338,9 @@ npm run cli -- s3-credentials create --name my-cred --policy '{"version":"2025-0
 npm run cli -- s3-credentials list [--active-only]
 npm run cli -- s3-credentials get --access-key-id GK...
 npm run cli -- s3-credentials revoke --access-key-id GK... [-f]
+npm run cli -- s3-credentials revoke --access-key-id GK... --permanent  # hard-delete
+npm run cli -- s3-credentials bulk-revoke --ids GKa,GKb --confirm       # without --confirm = dry-run
+npm run cli -- s3-credentials bulk-delete --ids GKa,GKb --confirm
 
 # Upstream CF API tokens (for purge)
 npm run cli -- upstream-tokens create --name prod-purge --token <cf-api-token> --zone-ids "<zone-id>"
@@ -1229,37 +1372,44 @@ Config via env vars (`GATEKEEPER_URL`, `GATEKEEPER_ADMIN_KEY`, `GATEKEEPER_API_K
 
 ## Tests
 
-392 tests across 19 test files (376 worker + 16 CLI):
+482 tests across 25 test files (466 worker + 16 CLI):
 
 ```bash
 npm test              # all (vitest workspace: worker + CLI)
 npm run test:worker   # worker tests only (Cloudflare Workers runtime via @cloudflare/vitest-pool-workers)
 npm run test:cli      # CLI tests only (Node.js)
+npm run smoke         # E2E smoke tests against a live instance (via tsx)
 ```
 
-| File                            | Tests | What                                                                              |
-| ------------------------------- | ----- | --------------------------------------------------------------------------------- |
-| `test/s3-e2e-iam.test.ts`       | 35    | S3 IAM policy evaluation: bucket/key/prefix scoping, cross-bucket copy, multipart |
-| `test/s3-e2e-objects.test.ts`   | 28    | S3 object operations: get, put, delete, batch delete, special chars               |
-| `test/s3-e2e-auth.test.ts`      | 22    | S3 auth: header-based, presigned URLs, bad signatures, revoked creds              |
-| `test/s3-e2e-buckets.test.ts`   | 10    | S3 bucket operations: list, head, create, delete                                  |
-| `test/s3-e2e-lifecycle.test.ts` | 7     | S3 multipart upload lifecycle + analytics logging                                 |
-| `test/s3-operations.test.ts`    | 64    | S3 path parsing + operation detection (66 operations)                             |
-| `test/s3-sigv4.test.ts`         | 10    | Sig V4 parsing + auth rejection                                                   |
-| `test/s3-credentials.test.ts`   | 9     | S3 credential CRUD                                                                |
-| `test/policy-engine.test.ts`    | 45    | All operators, compound conditions, regex safety, edge cases                      |
-| `test/iam.test.ts`              | 30    | DO-level IAM with v2 policies, key CRUD, auth gates                               |
-| `test/purge.test.ts`            | 29    | Full request flow, auth, body validation, all purge types, rate limiting          |
-| `test/token-bucket.test.ts`     | 16    | Consume, refill, drain, clock skew, fractional tokens                             |
-| `test/auth-access.test.ts`      | 14    | Access JWT validation with mock RSA keys, expiry, JWKS caching                    |
-| `test/config.test.ts`           | 13    | Config registry: get/set/reset, resolution order, cache invalidation              |
-| `test/perf.test.ts`             | 13    | Performance benchmarks                                                            |
-| `test/admin.test.ts`            | 12    | Admin auth, key lifecycle, validation                                             |
-| `test/security-headers.test.ts` | 12    | Security headers on every route type, no functional interference                  |
-| `test/analytics.test.ts`        | 9     | D1 event logging, filtering, summary                                              |
-| `cli/cli.test.ts`               | 16    | Policy parsing, config resolution                                                 |
+| File                                    | Tests | What                                                                              |
+| --------------------------------------- | ----- | --------------------------------------------------------------------------------- |
+| `test/s3-e2e-iam.test.ts`               | 35    | S3 IAM policy evaluation: bucket/key/prefix scoping, cross-bucket copy, multipart |
+| `test/s3-e2e-objects.test.ts`           | 28    | S3 object operations: get, put, delete, batch delete, special chars               |
+| `test/s3-e2e-auth.test.ts`              | 22    | S3 auth: header-based, presigned URLs, bad signatures, revoked creds              |
+| `test/s3-e2e-buckets.test.ts`           | 10    | S3 bucket operations: list, head, create, delete                                  |
+| `test/s3-e2e-lifecycle.test.ts`         | 7     | S3 multipart upload lifecycle + analytics logging                                 |
+| `test/s3-operations.test.ts`            | 64    | S3 path parsing + operation detection (66 operations)                             |
+| `test/s3-sigv4.test.ts`                 | 10    | Sig V4 parsing + auth rejection                                                   |
+| `test/s3-credentials.test.ts`           | 17    | S3 credential CRUD, hard-delete, bulk revoke/delete                               |
+| `test/policy-engine.test.ts`            | 34    | Core operators, compound conditions, edge cases                                   |
+| `test/policy-engine-numeric.test.ts`    | 15    | Numeric operators: lt, gt, lte, gte, NaN handling                                 |
+| `test/policy-engine-deny.test.ts`       | 9     | Deny statements: deny overrides allow, deny-only, implicit deny                   |
+| `test/policy-engine-fields.test.ts`     | 7     | IP/geo/time condition fields                                                      |
+| `test/policy-engine-validation.test.ts` | 17    | validatePolicy: schema, operators, regex safety, deny effect                      |
+| `test/aws-policy-converter.test.ts`     | 27    | AWS IAM → Gatekeeper policy conversion                                            |
+| `test/iam.test.ts`                      | 30    | DO-level IAM with v2 policies, key CRUD, auth gates                               |
+| `test/purge.test.ts`                    | 29    | Full request flow, auth, body validation, all purge types, rate limiting          |
+| `test/token-bucket.test.ts`             | 16    | Consume, refill, drain, clock skew, fractional tokens                             |
+| `test/request-collapse.test.ts`         | 9     | Request collapsing: dedup, grace window, error propagation                        |
+| `test/auth-access.test.ts`              | 14    | Access JWT validation with mock RSA keys, expiry, JWKS caching                    |
+| `test/config.test.ts`                   | 13    | Config registry: get/set/reset, resolution order, cache invalidation              |
+| `test/perf.test.ts`                     | 13    | Performance benchmarks                                                            |
+| `test/admin.test.ts`                    | 22    | Admin auth, key lifecycle, hard-delete, bulk revoke/delete                        |
+| `test/security-headers.test.ts`         | 12    | Security headers on every route type, no functional interference                  |
+| `test/analytics.test.ts`                | 9     | D1 event logging, filtering, summary                                              |
+| `cli/cli.test.ts`                       | 16    | Policy parsing, config resolution                                                 |
 
-Smoke tests: `./smoke-test.sh` (120 tests against a running `wrangler dev` instance).
+Smoke tests: `npm run smoke` — modularized E2E suite (20 sections across 7 modules) against a live instance.
 
 ---
 
@@ -1291,8 +1441,6 @@ One JSON object per request via `console.log`. Cloudflare observability picks it
 ```
 wrangler.jsonc                       Worker config: DO, D1, Static Assets, cron
 openapi.yaml                         OpenAPI 3.1 spec (all endpoints)
-PLAN.md                              S3/R2 proxy design document
-smoke-test.sh                        120-case smoke test suite
 src/
   index.ts                           Entrypoint: Hono app, security headers middleware, cron
   durable-object.ts                  Gatekeeper DO: all managers, RPC methods, bucket rebuild
@@ -1309,6 +1457,7 @@ src/
     admin-s3.ts                      S3 credential CRUD + S3 analytics queries
   types.ts                           Shared types (HonoEnv, RateLimitConfig, ApiKey, etc.)
   policy-types.ts                    PolicyDocument, Statement, Condition, RequestContext
+  request-fields.ts                  extractRequestFields() — client_ip, client_country, client_asn, time.*
   policy-engine.ts                   evaluatePolicy(), validatePolicy()
   auth-access.ts                     Cloudflare Access JWT validation (~80 lines, no deps)
   iam.ts                             IamManager: createKey, authorize, authorizeFromBody
@@ -1329,20 +1478,23 @@ src/
     analytics.ts                     D1 analytics for S3 (logS3Event, queryS3Events, queryS3Summary)
 cli/
   index.ts                           Entry point (citty, 8 subcommands)
+  smoke-test.ts                      E2E smoke test orchestrator
+  smoke/                             Modularized smoke test modules (7 files)
   client.ts                          HTTP client
   ui.ts                              Colors, spinners, tables
   commands/
     health.ts                        gk health
-    keys.ts                          gk keys {create,list,get,revoke}
+    keys.ts                          gk keys {create,list,get,revoke,bulk-revoke,bulk-delete}
     purge.ts                         gk purge {hosts,tags,prefixes,urls,everything}
     analytics.ts                     gk analytics {events,summary}
-    s3-credentials.ts                gk s3-credentials {create,list,get,revoke}
+    s3-credentials.ts                gk s3-credentials {create,list,get,revoke,bulk-revoke,bulk-delete}
     upstream-tokens.ts               gk upstream-tokens {create,list,get,revoke}
     upstream-r2.ts                   gk upstream-r2 {create,list,get,revoke}
     config.ts                        gk config {get,set,reset}
-test/                                19 test files (392 tests)
+test/                                25 test files (482 tests)
   helpers.ts                         Test factories, upstream token registration, mock helpers
   s3-helpers.ts                      R2 upstream registration, test constants
+  policy-helpers.ts                  Shared policy test helpers (makePolicy, allowStmt, denyStmt, makeCtx)
 dashboard/
   public/
     favicon.svg                      Lightning bolt on purple — matches sidebar logo
@@ -1350,6 +1502,7 @@ dashboard/
   src/
     layouts/DashboardLayout.astro    Sidebar nav (8 links in 5 sections), header, scroll-to-top
     lib/api.ts                       API client (all admin endpoints)
+    lib/aws-policy-converter.ts      AWS IAM → Gatekeeper policy conversion
     lib/typography.ts                Shared typography constants
     components/
       OverviewDashboard.tsx          Stats, charts, recent events
@@ -1396,3 +1549,9 @@ dashboard/
 | Access JWT validation latency               | +10-50ms per admin request   | Cache JWKS in-memory (1h TTL), `crypto.subtle.verify` is fast                                                   |
 | Policy schema too rigid for future services | Refactoring later            | Version field in policy doc. Engine dispatches on version.                                                      |
 | Static assets + Worker in same deploy       | Build complexity             | Separate build scripts, CI runs dashboard build then wrangler deploy                                            |
+
+---
+
+## License
+
+[MIT](LICENSE)
