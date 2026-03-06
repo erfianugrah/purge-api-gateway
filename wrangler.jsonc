@@ -42,7 +42,7 @@
 	},
 	"vars": {
 		"CF_ACCESS_TEAM_NAME": "erfianugrah",
-		"CF_ACCESS_AUD": "f5143ae5a95df1fdac6528435b69d8d005e3123a79e37969b1b693daa0ce411e",
+		"CF_ACCESS_AUD": "db63cba055d99e340d89cbe9e9da88e5b6e7f9a378e1e4bcee39e946f46d4b78",
 	},
 	"triggers": {
 		"crons": ["0 3 * * *"],
