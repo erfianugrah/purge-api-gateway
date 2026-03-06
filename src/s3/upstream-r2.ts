@@ -69,6 +69,25 @@ export class UpstreamR2Manager {
 				created_by TEXT
 			);
 		`);
+
+		// Migration: remove vestigial "revoked" column from old schema.
+		const cols = queryAll<{ name: string }>(this.sql, `PRAGMA table_info('upstream_r2')`);
+		if (cols.some((c) => c.name === 'revoked')) {
+			this.sql.exec(`DROP TABLE upstream_r2`);
+			this.sql.exec(`
+				CREATE TABLE upstream_r2 (
+					id TEXT PRIMARY KEY,
+					name TEXT NOT NULL,
+					access_key_id TEXT NOT NULL,
+					secret_access_key TEXT NOT NULL,
+					access_key_preview TEXT NOT NULL,
+					endpoint TEXT NOT NULL,
+					bucket_names TEXT NOT NULL,
+					created_at INTEGER NOT NULL,
+					created_by TEXT
+				);
+			`);
+		}
 	}
 
 	// ─── CRUD ───────────────────────────────────────────────────────────
