@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { usePagination } from '@/hooks/use-pagination';
+import { TablePagination } from '@/components/TablePagination';
 import { getEvents, getS3Events } from '@/lib/api';
 import type { PurgeEvent, S3Event } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -515,6 +517,17 @@ export function AnalyticsPage() {
 		return groups;
 	}, [filteredEvents, sortField, sortDir]);
 
+	const {
+		pageItems: pageGroups,
+		page: pgPage,
+		pageSize: pgSize,
+		totalItems: pgTotal,
+		totalPages: pgTotalPages,
+		pageSizeOptions: pgSizeOptions,
+		setPage: pgSetPage,
+		setPageSize: pgSetPageSize,
+	} = usePagination(flightGroups, { defaultPageSize: 50 });
+
 	// ── Counts for tab labels ────────────────────────────────────
 
 	const purgeCount = purgeEvents.length;
@@ -694,7 +707,7 @@ export function AnalyticsPage() {
 									</TableRow>
 								</TableHeader>
 								<TableBody>
-									{flightGroups.map((group) => {
+									{pageGroups.map((group) => {
 										const ev = group.leader;
 										const rowKey = `${ev.source}-${ev.id}`;
 										const isExpanded = expandedIds.has(rowKey);
@@ -703,8 +716,14 @@ export function AnalyticsPage() {
 										const isFlightExpanded = expandedIds.has(flightKey);
 										return (
 											<>
-												<TableRow key={rowKey} className="cursor-pointer select-none" onClick={() => toggleExpanded(rowKey)}>
-													<TableCell className="w-6 px-2">
+												<TableRow
+													key={rowKey}
+													className={cn('cursor-pointer select-none', hasFollowers && isFlightExpanded && 'bg-lv-blue/[0.03]')}
+													onClick={() => toggleExpanded(rowKey)}
+												>
+													<TableCell className="w-6 px-2 relative">
+														{/* Vertical tree trunk extending to followers when expanded */}
+														{hasFollowers && isFlightExpanded && <span className="absolute left-3 top-1/2 bottom-0 w-px bg-lv-blue/25" />}
 														<ChevronRight
 															className={cn(
 																'h-3.5 w-3.5 text-muted-foreground transition-transform duration-150',
@@ -780,42 +799,53 @@ export function AnalyticsPage() {
 												{/* Collapsed follower rows */}
 												{hasFollowers &&
 													isFlightExpanded &&
-													group.followers.map((follower) => {
+													group.followers.map((follower, idx) => {
 														const fKey = `${follower.source}-${follower.id}`;
 														const fExpanded = expandedIds.has(fKey);
+														const isLast = idx === group.followers.length - 1;
 														return (
 															<>
 																<TableRow
 																	key={fKey}
-																	className="cursor-pointer select-none bg-lv-blue/5 border-l-2 border-l-lv-blue/30"
+																	className="cursor-pointer select-none bg-lv-blue/5 hover:bg-lv-blue/10"
 																	onClick={() => toggleExpanded(fKey)}
 																>
-																	<TableCell className="w-6 px-2">
+																	<TableCell className="w-6 px-2 relative">
+																		{/* Tree connector line */}
+																		<span
+																			className="absolute left-3 top-0 bottom-0 w-px bg-lv-blue/25"
+																			style={isLast ? { bottom: '50%' } : undefined}
+																		/>
+																		<span className="absolute left-3 top-1/2 w-2.5 h-px bg-lv-blue/25" />
 																		<ChevronRight
 																			className={cn(
-																				'h-3.5 w-3.5 text-muted-foreground/50 transition-transform duration-150',
+																				'h-3.5 w-3.5 text-muted-foreground/50 transition-transform duration-150 ml-3',
 																				fExpanded && 'rotate-90',
 																			)}
 																		/>
 																	</TableCell>
-																	<TableCell className={cn(T.tableCellMono, 'text-muted-foreground')}>
+																	<TableCell className={cn(T.tableCellMono, 'text-muted-foreground/70')}>
 																		{formatTime(follower.created_at)}
 																	</TableCell>
 																	<TableCell>
-																		<Badge className="bg-lv-blue/10 text-lv-blue/70 border-lv-blue/20 gap-1 text-[10px]">
-																			{follower.collapsed ?? 'collapsed'}
-																		</Badge>
+																		<WithTooltip tip={COLLAPSED_TOOLTIPS[follower.collapsed ?? ''] ?? 'Deduplicated request'}>
+																			<Badge className="bg-lv-blue/10 text-lv-blue/70 border-lv-blue/20 gap-1 text-[10px]">
+																				{follower.collapsed ?? 'collapsed'}
+																			</Badge>
+																		</WithTooltip>
 																	</TableCell>
 																	<TableCell>
-																		<code className={cn(T.tableCellMono, 'text-muted-foreground')} title={follower.key_id}>
+																		<code className={cn(T.tableCellMono, 'text-muted-foreground/60')} title={follower.key_id}>
 																			{truncateId(follower.key_id ?? '', 10)}
 																		</code>
 																	</TableCell>
 																	<TableCell>
-																		<span className="text-xs text-muted-foreground/60 italic font-data">deduplicated against leader</span>
+																		<span className="text-[11px] text-muted-foreground/50 italic font-data">
+																			deduplicated against leader
+																		</span>
 																	</TableCell>
 																	<TableCell>{statusBadge(follower.status)}</TableCell>
-																	<TableCell className={cn(T.tableCellNumeric, 'text-muted-foreground')}>
+																	<TableCell className={cn(T.tableCellNumeric, 'text-muted-foreground/60')}>
 																		{follower.duration_ms.toFixed(0)} ms
 																	</TableCell>
 																</TableRow>
@@ -828,6 +858,16 @@ export function AnalyticsPage() {
 									})}
 								</TableBody>
 							</Table>
+							<TablePagination
+								page={pgPage}
+								totalPages={pgTotalPages}
+								totalItems={pgTotal}
+								pageSize={pgSize}
+								pageSizeOptions={pgSizeOptions}
+								onPageChange={pgSetPage}
+								onPageSizeChange={pgSetPageSize}
+								noun="flights"
+							/>
 						</CardContent>
 					</Card>
 				)}
