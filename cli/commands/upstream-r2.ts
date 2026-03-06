@@ -255,6 +255,148 @@ const revoke = defineCommand({
 	},
 });
 
+// --- upstream-r2 bulk-revoke ---
+const bulkRevoke = defineCommand({
+	meta: { name: 'bulk-revoke', description: 'Bulk soft-revoke multiple R2 endpoints' },
+	args: {
+		...globalArgs,
+		ids: {
+			type: 'string',
+			description: 'Comma-separated list of endpoint IDs (upr2_...)',
+			required: true,
+		},
+		confirm: {
+			type: 'boolean',
+			description: 'Execute the operation (without this flag, runs in dry-run mode)',
+		},
+	},
+	async run({ args }) {
+		const config = resolveConfig(args);
+		const ids = args.ids
+			.split(',')
+			.map((s: string) => s.trim())
+			.filter(Boolean);
+
+		if (ids.length === 0) {
+			error('No endpoint IDs provided');
+			process.exit(1);
+		}
+
+		const body: Record<string, unknown> = {
+			ids,
+			confirm_count: ids.length,
+			dry_run: !args.confirm,
+		};
+
+		const { status, data, durationMs } = await request(config, 'POST', '/admin/upstream-r2/bulk-revoke', {
+			body,
+			auth: 'admin',
+			label: args.confirm ? 'Bulk revoking R2 endpoints...' : 'Previewing bulk revoke (dry run)...',
+		});
+
+		if (args.json) {
+			assertOk(status, data);
+			printJson(data);
+			return;
+		}
+
+		assertOk(status, data);
+		const result = (data as Record<string, unknown>).result as Record<string, unknown>;
+
+		console.error('');
+		if (result.dry_run) {
+			warn(`Dry run — no changes made ${dim(`(${formatDuration(durationMs)})`)}`);
+			console.error('');
+			const items = result.items as { id: string; current_status: string; would_become: string }[];
+			const rows = items.map((i) => [cyan(i.id), i.current_status, yellow(i.would_become)]);
+			table(['ID', 'Current Status', 'Would Become'], rows);
+			console.error('');
+			info(`Re-run with ${bold('--confirm')} to execute.`);
+		} else {
+			success(`Bulk revoke complete ${dim(`(${formatDuration(durationMs)})`)}`);
+			console.error('');
+			const results = result.results as { id: string; status: string }[];
+			const rows = results.map((r) => {
+				const statusLabel = r.status === 'revoked' ? green(r.status) : r.status === 'not_found' ? red(r.status) : yellow(r.status);
+				return [cyan(r.id), statusLabel];
+			});
+			table(['ID', 'Status'], rows);
+		}
+		console.error('');
+	},
+});
+
+// --- upstream-r2 bulk-delete ---
+const bulkDelete = defineCommand({
+	meta: { name: 'bulk-delete', description: 'Bulk permanently delete multiple R2 endpoints' },
+	args: {
+		...globalArgs,
+		ids: {
+			type: 'string',
+			description: 'Comma-separated list of endpoint IDs (upr2_...)',
+			required: true,
+		},
+		confirm: {
+			type: 'boolean',
+			description: 'Execute the operation (without this flag, runs in dry-run mode)',
+		},
+	},
+	async run({ args }) {
+		const config = resolveConfig(args);
+		const ids = args.ids
+			.split(',')
+			.map((s: string) => s.trim())
+			.filter(Boolean);
+
+		if (ids.length === 0) {
+			error('No endpoint IDs provided');
+			process.exit(1);
+		}
+
+		const body: Record<string, unknown> = {
+			ids,
+			confirm_count: ids.length,
+			dry_run: !args.confirm,
+		};
+
+		const { status, data, durationMs } = await request(config, 'POST', '/admin/upstream-r2/bulk-delete', {
+			body,
+			auth: 'admin',
+			label: args.confirm ? 'Bulk deleting R2 endpoints...' : 'Previewing bulk delete (dry run)...',
+		});
+
+		if (args.json) {
+			assertOk(status, data);
+			printJson(data);
+			return;
+		}
+
+		assertOk(status, data);
+		const result = (data as Record<string, unknown>).result as Record<string, unknown>;
+
+		console.error('');
+		if (result.dry_run) {
+			warn(`Dry run — no changes made ${dim(`(${formatDuration(durationMs)})`)}`);
+			console.error('');
+			const items = result.items as { id: string; current_status: string; would_become: string }[];
+			const rows = items.map((i) => [cyan(i.id), i.current_status, yellow(i.would_become)]);
+			table(['ID', 'Current Status', 'Would Become'], rows);
+			console.error('');
+			info(`Re-run with ${bold('--confirm')} to execute.`);
+		} else {
+			success(`Bulk delete complete ${dim(`(${formatDuration(durationMs)})`)}`);
+			console.error('');
+			const results = result.results as { id: string; status: string }[];
+			const rows = results.map((r) => {
+				const statusLabel = r.status === 'deleted' ? green(r.status) : red(r.status);
+				return [cyan(r.id), statusLabel];
+			});
+			table(['ID', 'Status'], rows);
+		}
+		console.error('');
+	},
+});
+
 // --- Formatting helper ---
 
 function formatUpstreamR2(ep: Record<string, unknown>): void {
@@ -275,5 +417,5 @@ function formatUpstreamR2(ep: Record<string, unknown>): void {
 // --- upstream-r2 (parent) ---
 export default defineCommand({
 	meta: { name: 'upstream-r2', description: 'Manage upstream R2 endpoints for S3 proxy' },
-	subCommands: { create, list, get, revoke },
+	subCommands: { create, list, get, revoke, 'bulk-revoke': bulkRevoke, 'bulk-delete': bulkDelete },
 });

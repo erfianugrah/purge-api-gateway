@@ -172,7 +172,7 @@ Token/secret values are write-only — they can't be retrieved after registratio
 npm run dev              # wrangler dev (local)
 npm run build            # build dashboard + CLI
 npm run deploy           # build dashboard, then wrangler deploy
-npm test                 # run all tests (551 across worker + CLI)
+npm test                 # run all tests (569 across worker + CLI)
 npm run test:worker      # worker tests only
 npm run test:cli         # CLI tests only
 npx wrangler types       # regenerate types after changing wrangler.jsonc
@@ -1374,7 +1374,7 @@ Config via env vars (`GATEKEEPER_URL`, `GATEKEEPER_ADMIN_KEY`, `GATEKEEPER_API_K
 
 ## Tests
 
-551 tests across 29 test files (535 worker + 16 CLI):
+569 tests across 29 test files (553 worker + 16 CLI):
 
 ```bash
 npm test              # all (vitest workspace: worker + CLI)
@@ -1494,10 +1494,10 @@ cli/
     purge.ts                         gk purge {hosts,tags,prefixes,urls,everything}
     analytics.ts                     gk analytics {events,summary}
     s3-credentials.ts                gk s3-credentials {create,list,get,revoke,bulk-revoke,bulk-delete}
-    upstream-tokens.ts               gk upstream-tokens {create,list,get,revoke}
-    upstream-r2.ts                   gk upstream-r2 {create,list,get,revoke}
+    upstream-tokens.ts               gk upstream-tokens {create,list,get,revoke,bulk-revoke,bulk-delete}
+    upstream-r2.ts                   gk upstream-r2 {create,list,get,revoke,bulk-revoke,bulk-delete}
     config.ts                        gk config {get,set,reset}
-test/                                29 test files (551 tests)
+test/                                29 test files (569 tests)
   helpers.ts                         Test factories, upstream token registration, mock helpers
   s3-helpers.ts                      R2 upstream registration, test constants
   policy-helpers.ts                  Shared policy test helpers (makePolicy, allowStmt, denyStmt, makeCtx)

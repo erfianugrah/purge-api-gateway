@@ -409,6 +409,26 @@ export async function revokeUpstreamToken(id: string): Promise<{ revoked: boolea
 	});
 }
 
+export async function deleteUpstreamToken(id: string): Promise<{ deleted: boolean }> {
+	return apiFetch<{ deleted: boolean }>(`/admin/upstream-tokens/${id}?permanent=true`, {
+		method: 'DELETE',
+	});
+}
+
+export async function bulkRevokeUpstreamTokens(ids: string[]): Promise<BulkResult> {
+	return apiFetch<BulkResult>('/admin/upstream-tokens/bulk-revoke', {
+		method: 'POST',
+		body: JSON.stringify({ ids, confirm_count: ids.length }),
+	});
+}
+
+export async function bulkDeleteUpstreamTokens(ids: string[]): Promise<BulkResult> {
+	return apiFetch<BulkResult>('/admin/upstream-tokens/bulk-delete', {
+		method: 'POST',
+		body: JSON.stringify({ ids, confirm_count: ids.length }),
+	});
+}
+
 // ─── Upstream R2 Endpoints ───────────────────────────────────────────
 
 export interface UpstreamR2 {
@@ -453,6 +473,26 @@ export async function createUpstreamR2(req: CreateUpstreamR2Request): Promise<Up
 export async function revokeUpstreamR2(id: string): Promise<{ revoked: boolean }> {
 	return apiFetch<{ revoked: boolean }>(`/admin/upstream-r2/${id}`, {
 		method: 'DELETE',
+	});
+}
+
+export async function deleteUpstreamR2(id: string): Promise<{ deleted: boolean }> {
+	return apiFetch<{ deleted: boolean }>(`/admin/upstream-r2/${id}?permanent=true`, {
+		method: 'DELETE',
+	});
+}
+
+export async function bulkRevokeUpstreamR2Endpoints(ids: string[]): Promise<BulkResult> {
+	return apiFetch<BulkResult>('/admin/upstream-r2/bulk-revoke', {
+		method: 'POST',
+		body: JSON.stringify({ ids, confirm_count: ids.length }),
+	});
+}
+
+export async function bulkDeleteUpstreamR2Endpoints(ids: string[]): Promise<BulkResult> {
+	return apiFetch<BulkResult>('/admin/upstream-r2/bulk-delete', {
+		method: 'POST',
+		body: JSON.stringify({ ids, confirm_count: ids.length }),
 	});
 }
 

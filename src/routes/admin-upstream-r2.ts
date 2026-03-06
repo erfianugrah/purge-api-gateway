@@ -123,11 +123,32 @@ adminUpstreamR2App.get('/:id', async (c) => {
 	return c.json({ success: true, result: result.endpoint });
 });
 
-// ─── Revoke ─────────────────────────────────────────────────────────────────
+// ─── Revoke / delete ────────────────────────────────────────────────────────
 
 adminUpstreamR2App.delete('/:id', async (c) => {
 	const id = c.req.param('id');
+	const permanent = c.req.query('permanent') === 'true';
 	const stub = getStub(c.env);
+
+	if (permanent) {
+		const deleted = await stub.deleteUpstreamR2(id);
+
+		console.log(
+			JSON.stringify({
+				route: 'admin.deleteUpstreamR2',
+				endpointId: id,
+				deleted,
+				ts: new Date().toISOString(),
+			}),
+		);
+
+		if (!deleted) {
+			return c.json({ success: false, errors: [{ code: 404, message: 'Upstream R2 endpoint not found' }] }, 404);
+		}
+
+		return c.json({ success: true, result: { deleted: true } });
+	}
+
 	const revoked = await stub.revokeUpstreamR2(id);
 
 	console.log(
@@ -145,3 +166,96 @@ adminUpstreamR2App.delete('/:id', async (c) => {
 
 	return c.json({ success: true, result: { revoked: true } });
 });
+
+// ─── Bulk revoke ────────────────────────────────────────────────────────────
+
+const MAX_BULK_ITEMS = 100;
+
+adminUpstreamR2App.post('/bulk-revoke', async (c) => {
+	const log: Record<string, unknown> = { route: 'admin.bulkRevokeUpstreamR2', ts: new Date().toISOString() };
+
+	const body = await parseBulkBody(c);
+	if (body instanceof Response) return body;
+
+	const { ids, dryRun } = body;
+	const stub = getStub(c.env);
+
+	if (dryRun) {
+		const preview = await stub.bulkInspectUpstreamR2(ids, 'revoked');
+		log.status = 200;
+		log.dryRun = true;
+		log.count = ids.length;
+		console.log(JSON.stringify(log));
+		return c.json({ success: true, result: preview });
+	}
+
+	const result = await stub.bulkRevokeUpstreamR2(ids);
+	log.status = 200;
+	log.processed = result.processed;
+	console.log(JSON.stringify(log));
+	return c.json({ success: true, result });
+});
+
+// ─── Bulk delete ────────────────────────────────────────────────────────────
+
+adminUpstreamR2App.post('/bulk-delete', async (c) => {
+	const log: Record<string, unknown> = { route: 'admin.bulkDeleteUpstreamR2', ts: new Date().toISOString() };
+
+	const body = await parseBulkBody(c);
+	if (body instanceof Response) return body;
+
+	const { ids, dryRun } = body;
+	const stub = getStub(c.env);
+
+	if (dryRun) {
+		const preview = await stub.bulkInspectUpstreamR2(ids, 'deleted');
+		log.status = 200;
+		log.dryRun = true;
+		log.count = ids.length;
+		console.log(JSON.stringify(log));
+		return c.json({ success: true, result: preview });
+	}
+
+	const result = await stub.bulkDeleteUpstreamR2(ids);
+	log.status = 200;
+	log.processed = result.processed;
+	console.log(JSON.stringify(log));
+	return c.json({ success: true, result });
+});
+
+// ─── Private helpers ────────────────────────────────────────────────────────
+
+/** Parse and validate a bulk operation request body. */
+async function parseBulkBody(c: {
+	req: { json: <T>() => Promise<T> };
+	json: (data: unknown, status: number) => Response;
+}): Promise<{ ids: string[]; dryRun: boolean } | Response> {
+	let raw: Record<string, unknown>;
+	try {
+		raw = await c.req.json<Record<string, unknown>>();
+	} catch {
+		return c.json({ success: false, errors: [{ code: 400, message: 'Invalid JSON body' }] }, 400);
+	}
+
+	const ids = raw.ids;
+	if (!Array.isArray(ids) || ids.length === 0 || !ids.every((id) => typeof id === 'string')) {
+		return c.json({ success: false, errors: [{ code: 400, message: 'ids must be a non-empty array of strings' }] }, 400);
+	}
+
+	if (ids.length > MAX_BULK_ITEMS) {
+		return c.json({ success: false, errors: [{ code: 400, message: `Maximum ${MAX_BULK_ITEMS} items per request` }] }, 400);
+	}
+
+	if (typeof raw.confirm_count !== 'number' || raw.confirm_count !== ids.length) {
+		return c.json(
+			{
+				success: false,
+				errors: [{ code: 400, message: `confirm_count must equal ids array length (${ids.length})` }],
+			},
+			400,
+		);
+	}
+
+	const dryRun = raw.dry_run === true;
+	return { ids: ids as string[], dryRun };
+}

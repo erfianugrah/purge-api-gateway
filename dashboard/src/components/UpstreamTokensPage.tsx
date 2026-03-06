@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Plus, ShieldOff, Loader2, Copy, Check } from 'lucide-react';
+import { Plus, ShieldOff, Trash2, Loader2, Copy, Check } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,13 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePagination } from '@/hooks/use-pagination';
 import { TablePagination } from '@/components/TablePagination';
-import { listUpstreamTokens, createUpstreamToken, revokeUpstreamToken } from '@/lib/api';
+import {
+	listUpstreamTokens,
+	createUpstreamToken,
+	revokeUpstreamToken,
+	bulkRevokeUpstreamTokens,
+	bulkDeleteUpstreamTokens,
+} from '@/lib/api';
 import type { UpstreamToken } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { T } from '@/lib/typography';
@@ -173,6 +179,8 @@ export function UpstreamTokensPage() {
 	const [revokingId, setRevokingId] = useState<string | null>(null);
 	const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'revoked'>('all');
 	const [copiedId, setCopiedId] = useState<string | null>(null);
+	const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+	const [bulkLoading, setBulkLoading] = useState(false);
 
 	const fetchTokens = useCallback(async () => {
 		setLoading(true);
@@ -212,6 +220,60 @@ export function UpstreamTokensPage() {
 		setTimeout(() => setCopiedId(null), 2000);
 	};
 
+	const toggleSelect = (id: string) => {
+		setSelectedIds((prev) => {
+			const next = new Set(prev);
+			if (next.has(id)) next.delete(id);
+			else next.add(id);
+			return next;
+		});
+	};
+
+	const toggleSelectAll = () => {
+		if (selectedIds.size === tokens.length) {
+			setSelectedIds(new Set());
+		} else {
+			setSelectedIds(new Set(tokens.map((t) => t.id)));
+		}
+	};
+
+	const handleBulkRevoke = async () => {
+		const ids = [...selectedIds];
+		const activeIds = ids.filter((id) => tokens.find((t) => t.id === id && !t.revoked));
+		if (activeIds.length === 0) return;
+		if (!confirm(`Bulk revoke ${activeIds.length} token${activeIds.length > 1 ? 's' : ''}? This cannot be undone.`)) return;
+		setBulkLoading(true);
+		try {
+			await bulkRevokeUpstreamTokens(activeIds);
+			setSelectedIds(new Set());
+			await fetchTokens();
+		} catch (e: any) {
+			setError(e.message ?? 'Bulk revoke failed');
+		} finally {
+			setBulkLoading(false);
+		}
+	};
+
+	const handleBulkDelete = async () => {
+		const ids = [...selectedIds];
+		const revokedIds = ids.filter((id) => tokens.find((t) => t.id === id && t.revoked));
+		if (revokedIds.length === 0) return;
+		if (!confirm(`Permanently delete ${revokedIds.length} token${revokedIds.length > 1 ? 's' : ''}? This cannot be undone.`)) return;
+		setBulkLoading(true);
+		try {
+			await bulkDeleteUpstreamTokens(revokedIds);
+			setSelectedIds(new Set());
+			await fetchTokens();
+		} catch (e: any) {
+			setError(e.message ?? 'Bulk delete failed');
+		} finally {
+			setBulkLoading(false);
+		}
+	};
+
+	const selectedActiveCount = [...selectedIds].filter((id) => tokens.find((t) => t.id === id && !t.revoked)).length;
+	const selectedRevokedCount = [...selectedIds].filter((id) => tokens.find((t) => t.id === id && t.revoked)).length;
+
 	const activeCount = tokens.filter((t) => !t.revoked).length;
 	const revokedCount = tokens.filter((t) => t.revoked).length;
 
@@ -242,6 +304,42 @@ export function UpstreamTokensPage() {
 				</TabsList>
 			</Tabs>
 
+			{/* ── Bulk actions bar ────────────────────────────────── */}
+			{selectedIds.size > 0 && (
+				<div className="flex items-center gap-3 rounded-lg border border-lv-purple/30 bg-lv-purple/10 px-4 py-2">
+					<span className="text-sm font-data text-lv-purple">{selectedIds.size} selected</span>
+					<div className="ml-auto flex gap-2">
+						{selectedActiveCount > 0 && (
+							<Button
+								size="sm"
+								variant="outline"
+								className="text-lv-red border-lv-red/30"
+								onClick={handleBulkRevoke}
+								disabled={bulkLoading}
+							>
+								{bulkLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldOff className="h-3.5 w-3.5" />}
+								Revoke ({selectedActiveCount})
+							</Button>
+						)}
+						{selectedRevokedCount > 0 && (
+							<Button
+								size="sm"
+								variant="outline"
+								className="text-lv-red border-lv-red/30"
+								onClick={handleBulkDelete}
+								disabled={bulkLoading}
+							>
+								{bulkLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+								Delete ({selectedRevokedCount})
+							</Button>
+						)}
+						<Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
+							Clear
+						</Button>
+					</div>
+				</div>
+			)}
+
 			{/* ── Loading ────────────────────────────────────────── */}
 			{loading && <TokensTableSkeleton />}
 
@@ -262,6 +360,14 @@ export function UpstreamTokensPage() {
 						<Table>
 							<TableHeader>
 								<TableRow>
+									<TableHead className="w-8">
+										<input
+											type="checkbox"
+											checked={tokens.length > 0 && selectedIds.size === tokens.length}
+											onChange={toggleSelectAll}
+											className="rounded border-border"
+										/>
+									</TableHead>
 									<TableHead className={T.sectionLabel}>Name</TableHead>
 									<TableHead className={T.sectionLabel}>ID</TableHead>
 									<TableHead className={T.sectionLabel}>Token</TableHead>
@@ -275,6 +381,14 @@ export function UpstreamTokensPage() {
 							<TableBody>
 								{pageItems.map((t) => (
 									<TableRow key={t.id}>
+										<TableCell className="w-8">
+											<input
+												type="checkbox"
+												checked={selectedIds.has(t.id)}
+												onChange={() => toggleSelect(t.id)}
+												className="rounded border-border"
+											/>
+										</TableCell>
 										<TableCell className={T.tableRowName}>{t.name}</TableCell>
 										<TableCell>
 											<div className="flex items-center gap-1">

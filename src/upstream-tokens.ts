@@ -1,4 +1,5 @@
 import { queryAll } from './crypto';
+import type { BulkResult, BulkItemResult, BulkDryRunResult, BulkInspectItem } from './types';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -133,6 +134,59 @@ export class UpstreamTokenManager {
 			this.invalidateCache();
 		}
 		return result.rowsWritten > 0;
+	}
+
+	/** Permanently delete an upstream token. Returns true if the row existed and was removed. */
+	deleteToken(id: string): boolean {
+		const result = this.sql.exec('DELETE FROM upstream_tokens WHERE id = ?', id);
+		if (result.rowsWritten > 0) {
+			this.invalidateCache();
+		}
+		return result.rowsWritten > 0;
+	}
+
+	// ─── Bulk operations ────────────────────────────────────────────────
+
+	/** Bulk soft-revoke tokens. Returns per-item status. */
+	bulkRevoke(ids: string[]): BulkResult {
+		const results: BulkItemResult[] = [];
+		for (const id of ids) {
+			const existing = this.getToken(id);
+			if (!existing) {
+				results.push({ id, status: 'not_found' });
+			} else if (existing.token.revoked) {
+				results.push({ id, status: 'already_revoked' });
+			} else {
+				this.revokeToken(id);
+				results.push({ id, status: 'revoked' });
+			}
+		}
+		return { processed: results.length, results };
+	}
+
+	/** Bulk hard-delete tokens. Returns per-item status. */
+	bulkDelete(ids: string[]): BulkResult {
+		const results: BulkItemResult[] = [];
+		for (const id of ids) {
+			const deleted = this.deleteToken(id);
+			results.push({ id, status: deleted ? 'deleted' : 'not_found' });
+		}
+		return { processed: results.length, results };
+	}
+
+	/** Inspect tokens without modifying — for dry-run preview. */
+	bulkInspect(ids: string[], wouldBecome: string): BulkDryRunResult {
+		const items: BulkInspectItem[] = [];
+		for (const id of ids) {
+			const existing = this.getToken(id);
+			if (!existing) {
+				items.push({ id, current_status: 'not_found', would_become: 'not_found' });
+			} else {
+				const currentStatus: BulkInspectItem['current_status'] = existing.token.revoked ? 'revoked' : 'active';
+				items.push({ id, current_status: currentStatus, would_become: wouldBecome });
+			}
+		}
+		return { dry_run: true, would_process: items.length, items };
 	}
 
 	// ─── Resolution ─────────────────────────────────────────────────────

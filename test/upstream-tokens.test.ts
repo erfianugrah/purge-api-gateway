@@ -240,6 +240,194 @@ describe('Upstream tokens — authentication', () => {
 	});
 });
 
+describe('Upstream tokens — permanent delete', () => {
+	it('DELETE ?permanent=true removes token entirely', async () => {
+		// Create a token
+		const createRes = await SELF.fetch('http://localhost/admin/upstream-tokens', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({ name: 'perm-del-test', token: 'cf-perm-del-token-1234567890abcdef1234567890', zone_ids: ['*'] }),
+		});
+		const { result } = await createRes.json<any>();
+		const tokenId = result.id;
+
+		// Permanent delete
+		const delRes = await SELF.fetch(`http://localhost/admin/upstream-tokens/${tokenId}?permanent=true`, {
+			method: 'DELETE',
+			headers: adminHeaders(),
+		});
+		expect(delRes.status).toBe(200);
+		const delData = await delRes.json<any>();
+		expect(delData.result.deleted).toBe(true);
+
+		// Verify gone
+		const getRes = await SELF.fetch(`http://localhost/admin/upstream-tokens/${tokenId}`, { headers: adminHeaders() });
+		expect(getRes.status).toBe(404);
+	});
+
+	it('permanent delete nonexistent -> 404', async () => {
+		const res = await SELF.fetch('http://localhost/admin/upstream-tokens/upt_doesnotexist000000?permanent=true', {
+			method: 'DELETE',
+			headers: adminHeaders(),
+		});
+		expect(res.status).toBe(404);
+	});
+});
+
+describe('Upstream tokens — bulk revoke', () => {
+	it('bulk-revoke mix of active, already-revoked, not-found', async () => {
+		// Create 2 tokens
+		const c1 = await SELF.fetch('http://localhost/admin/upstream-tokens', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({ name: 'bulk-r-1', token: 'cf-bulk-r1-token-1234567890abcdef1234567890ab', zone_ids: ['*'] }),
+		});
+		const t1 = (await c1.json<any>()).result.id;
+
+		const c2 = await SELF.fetch('http://localhost/admin/upstream-tokens', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({ name: 'bulk-r-2', token: 'cf-bulk-r2-token-1234567890abcdef1234567890ab', zone_ids: ['*'] }),
+		});
+		const t2 = (await c2.json<any>()).result.id;
+
+		// Pre-revoke t2
+		await SELF.fetch(`http://localhost/admin/upstream-tokens/${t2}`, { method: 'DELETE', headers: adminHeaders() });
+
+		const res = await SELF.fetch('http://localhost/admin/upstream-tokens/bulk-revoke', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({ ids: [t1, t2, 'upt_doesnotexist000000'], confirm_count: 3 }),
+		});
+		expect(res.status).toBe(200);
+		const data = await res.json<any>();
+		expect(data.result.processed).toBe(3);
+
+		const statuses = Object.fromEntries(data.result.results.map((r: any) => [r.id, r.status]));
+		expect(statuses[t1]).toBe('revoked');
+		expect(statuses[t2]).toBe('already_revoked');
+		expect(statuses['upt_doesnotexist000000']).toBe('not_found');
+	});
+
+	it('bulk-revoke dry_run returns preview without modifying', async () => {
+		const c1 = await SELF.fetch('http://localhost/admin/upstream-tokens', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({ name: 'bulk-dry-1', token: 'cf-bulk-dry-token-1234567890abcdef123456789', zone_ids: ['*'] }),
+		});
+		const t1 = (await c1.json<any>()).result.id;
+
+		const res = await SELF.fetch('http://localhost/admin/upstream-tokens/bulk-revoke', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({ ids: [t1], confirm_count: 1, dry_run: true }),
+		});
+		expect(res.status).toBe(200);
+		const data = await res.json<any>();
+		expect(data.result.dry_run).toBe(true);
+		expect(data.result.items[0].current_status).toBe('active');
+		expect(data.result.items[0].would_become).toBe('revoked');
+
+		// Token should still be active
+		const getRes = await SELF.fetch(`http://localhost/admin/upstream-tokens/${t1}`, { headers: adminHeaders() });
+		const getToken = await getRes.json<any>();
+		expect(getToken.result.revoked).toBe(0);
+	});
+
+	it('bulk-revoke rejects confirm_count mismatch', async () => {
+		const res = await SELF.fetch('http://localhost/admin/upstream-tokens/bulk-revoke', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({ ids: ['upt_a', 'upt_b'], confirm_count: 5 }),
+		});
+		expect(res.status).toBe(400);
+		const data = await res.json<any>();
+		expect(data.errors[0].message).toMatch(/confirm_count/);
+	});
+
+	it('bulk-revoke rejects empty array', async () => {
+		const res = await SELF.fetch('http://localhost/admin/upstream-tokens/bulk-revoke', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({ ids: [], confirm_count: 0 }),
+		});
+		expect(res.status).toBe(400);
+		const data = await res.json<any>();
+		expect(data.errors[0].message).toMatch(/non-empty/);
+	});
+
+	it('bulk-revoke rejects over 100 items', async () => {
+		const ids = Array.from({ length: 101 }, (_, i) => `upt_${String(i).padStart(24, '0')}`);
+		const res = await SELF.fetch('http://localhost/admin/upstream-tokens/bulk-revoke', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({ ids, confirm_count: 101 }),
+		});
+		expect(res.status).toBe(400);
+		const data = await res.json<any>();
+		expect(data.errors[0].message).toMatch(/100/);
+	});
+});
+
+describe('Upstream tokens — bulk delete', () => {
+	it('bulk-delete mix of existing and not-found', async () => {
+		const c1 = await SELF.fetch('http://localhost/admin/upstream-tokens', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({ name: 'bulk-d-1', token: 'cf-bulk-d1-token-1234567890abcdef1234567890ab', zone_ids: ['*'] }),
+		});
+		const t1 = (await c1.json<any>()).result.id;
+
+		const c2 = await SELF.fetch('http://localhost/admin/upstream-tokens', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({ name: 'bulk-d-2', token: 'cf-bulk-d2-token-1234567890abcdef1234567890ab', zone_ids: ['*'] }),
+		});
+		const t2 = (await c2.json<any>()).result.id;
+
+		const res = await SELF.fetch('http://localhost/admin/upstream-tokens/bulk-delete', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({ ids: [t1, t2, 'upt_doesnotexist000000'], confirm_count: 3 }),
+		});
+		expect(res.status).toBe(200);
+		const data = await res.json<any>();
+		expect(data.result.processed).toBe(3);
+
+		const statuses = Object.fromEntries(data.result.results.map((r: any) => [r.id, r.status]));
+		expect(statuses[t1]).toBe('deleted');
+		expect(statuses[t2]).toBe('deleted');
+		expect(statuses['upt_doesnotexist000000']).toBe('not_found');
+
+		// Tokens should be gone
+		const get1 = await SELF.fetch(`http://localhost/admin/upstream-tokens/${t1}`, { headers: adminHeaders() });
+		expect(get1.status).toBe(404);
+	});
+
+	it('bulk-delete dry_run returns preview without modifying', async () => {
+		const c1 = await SELF.fetch('http://localhost/admin/upstream-tokens', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({ name: 'bulk-dry-d-1', token: 'cf-bulk-dryd-token-1234567890abcdef12345678', zone_ids: ['*'] }),
+		});
+		const t1 = (await c1.json<any>()).result.id;
+
+		const res = await SELF.fetch('http://localhost/admin/upstream-tokens/bulk-delete', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({ ids: [t1], confirm_count: 1, dry_run: true }),
+		});
+		expect(res.status).toBe(200);
+		const data = await res.json<any>();
+		expect(data.result.dry_run).toBe(true);
+		expect(data.result.items[0].would_become).toBe('deleted');
+
+		// Token should still exist
+		const getRes = await SELF.fetch(`http://localhost/admin/upstream-tokens/${t1}`, { headers: adminHeaders() });
+		expect(getRes.status).toBe(200);
+	});
+});
+
 describe('Upstream tokens — created_by', () => {
 	it('created_by from request body when no Access identity', async () => {
 		const res = await SELF.fetch('http://localhost/admin/upstream-tokens', {

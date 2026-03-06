@@ -2108,6 +2108,130 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
 
+  /admin/upstream-tokens/bulk-revoke:
+    post:
+      operationId: bulkRevokeUpstreamTokens
+      summary: Bulk soft-revoke multiple upstream tokens
+      description: >
+        Soft-revoke multiple upstream tokens in one request. Requires `confirm_count` to match
+        the number of IDs as a fat-finger guard. Set `dry_run: true` to preview without executing.
+      tags: [UpstreamTokens]
+      security:
+        - CloudflareAccess: []
+        - AdminKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids, confirm_count]
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+                  minItems: 1
+                  maxItems: 100
+                  description: Array of upstream token IDs to revoke.
+                confirm_count:
+                  type: integer
+                  description: Must exactly match the length of `ids`.
+                dry_run:
+                  type: boolean
+                  default: false
+                  description: Preview the operation without executing.
+      responses:
+        '200':
+          description: Bulk revoke result or dry-run preview.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, result]
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  result:
+                    oneOf:
+                      - $ref: '#/components/schemas/BulkResult'
+                      - $ref: '#/components/schemas/BulkDryRunResult'
+        '400':
+          description: Validation error (empty array, confirm_count mismatch, over 100 items).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /admin/upstream-tokens/bulk-delete:
+    post:
+      operationId: bulkDeleteUpstreamTokens
+      summary: Bulk permanently delete multiple upstream tokens
+      description: >
+        Permanently remove multiple upstream tokens from the database. Works on tokens in any state.
+        Requires `confirm_count` as a fat-finger guard. Set `dry_run: true` to preview.
+      tags: [UpstreamTokens]
+      security:
+        - CloudflareAccess: []
+        - AdminKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids, confirm_count]
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+                  minItems: 1
+                  maxItems: 100
+                  description: Array of upstream token IDs to delete.
+                confirm_count:
+                  type: integer
+                  description: Must exactly match the length of `ids`.
+                dry_run:
+                  type: boolean
+                  default: false
+                  description: Preview the operation without executing.
+      responses:
+        '200':
+          description: Bulk delete result or dry-run preview.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, result]
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  result:
+                    oneOf:
+                      - $ref: '#/components/schemas/BulkResult'
+                      - $ref: '#/components/schemas/BulkDryRunResult'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
   # ─── Admin: Upstream R2 Endpoints ────────────────────────────────────────
 
   /admin/upstream-r2:
@@ -2273,6 +2397,130 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
           description: Endpoint not found or already revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /admin/upstream-r2/bulk-revoke:
+    post:
+      operationId: bulkRevokeUpstreamR2
+      summary: Bulk soft-revoke multiple upstream R2 endpoints
+      description: >
+        Soft-revoke multiple upstream R2 endpoints in one request. Requires `confirm_count` to match
+        the number of IDs as a fat-finger guard. Set `dry_run: true` to preview without executing.
+      tags: [UpstreamR2]
+      security:
+        - CloudflareAccess: []
+        - AdminKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids, confirm_count]
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+                  minItems: 1
+                  maxItems: 100
+                  description: Array of upstream R2 endpoint IDs to revoke.
+                confirm_count:
+                  type: integer
+                  description: Must exactly match the length of `ids`.
+                dry_run:
+                  type: boolean
+                  default: false
+                  description: Preview the operation without executing.
+      responses:
+        '200':
+          description: Bulk revoke result or dry-run preview.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, result]
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  result:
+                    oneOf:
+                      - $ref: '#/components/schemas/BulkResult'
+                      - $ref: '#/components/schemas/BulkDryRunResult'
+        '400':
+          description: Validation error (empty array, confirm_count mismatch, over 100 items).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /admin/upstream-r2/bulk-delete:
+    post:
+      operationId: bulkDeleteUpstreamR2
+      summary: Bulk permanently delete multiple upstream R2 endpoints
+      description: >
+        Permanently remove multiple upstream R2 endpoints from the database. Works on endpoints
+        in any state. Requires `confirm_count` as a fat-finger guard. Set `dry_run: true` to preview.
+      tags: [UpstreamR2]
+      security:
+        - CloudflareAccess: []
+        - AdminKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids, confirm_count]
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+                  minItems: 1
+                  maxItems: 100
+                  description: Array of upstream R2 endpoint IDs to delete.
+                confirm_count:
+                  type: integer
+                  description: Must exactly match the length of `ids`.
+                dry_run:
+                  type: boolean
+                  default: false
+                  description: Preview the operation without executing.
+      responses:
+        '200':
+          description: Bulk delete result or dry-run preview.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, result]
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  result:
+                    oneOf:
+                      - $ref: '#/components/schemas/BulkResult'
+                      - $ref: '#/components/schemas/BulkDryRunResult'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Not authenticated.
           content:
             application/json:
               schema:

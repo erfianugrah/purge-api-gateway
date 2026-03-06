@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Plus, ShieldOff, Loader2, Copy, Check } from 'lucide-react';
+import { Plus, ShieldOff, Trash2, Loader2, Copy, Check } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,13 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePagination } from '@/hooks/use-pagination';
 import { TablePagination } from '@/components/TablePagination';
-import { listUpstreamR2, createUpstreamR2, revokeUpstreamR2 } from '@/lib/api';
+import {
+	listUpstreamR2,
+	createUpstreamR2,
+	revokeUpstreamR2,
+	bulkRevokeUpstreamR2Endpoints,
+	bulkDeleteUpstreamR2Endpoints,
+} from '@/lib/api';
 import type { UpstreamR2 } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { T } from '@/lib/typography';
@@ -211,6 +217,8 @@ export function UpstreamR2Page() {
 	const [revokingId, setRevokingId] = useState<string | null>(null);
 	const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'revoked'>('all');
 	const [copiedId, setCopiedId] = useState<string | null>(null);
+	const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+	const [bulkLoading, setBulkLoading] = useState(false);
 
 	const fetchEndpoints = useCallback(async () => {
 		setLoading(true);
@@ -250,6 +258,60 @@ export function UpstreamR2Page() {
 		setTimeout(() => setCopiedId(null), 2000);
 	};
 
+	const toggleSelect = (id: string) => {
+		setSelectedIds((prev) => {
+			const next = new Set(prev);
+			if (next.has(id)) next.delete(id);
+			else next.add(id);
+			return next;
+		});
+	};
+
+	const toggleSelectAll = () => {
+		if (selectedIds.size === endpoints.length) {
+			setSelectedIds(new Set());
+		} else {
+			setSelectedIds(new Set(endpoints.map((ep) => ep.id)));
+		}
+	};
+
+	const handleBulkRevoke = async () => {
+		const ids = [...selectedIds];
+		const activeIds = ids.filter((id) => endpoints.find((ep) => ep.id === id && !ep.revoked));
+		if (activeIds.length === 0) return;
+		if (!confirm(`Bulk revoke ${activeIds.length} endpoint${activeIds.length > 1 ? 's' : ''}? This cannot be undone.`)) return;
+		setBulkLoading(true);
+		try {
+			await bulkRevokeUpstreamR2Endpoints(activeIds);
+			setSelectedIds(new Set());
+			await fetchEndpoints();
+		} catch (e: any) {
+			setError(e.message ?? 'Bulk revoke failed');
+		} finally {
+			setBulkLoading(false);
+		}
+	};
+
+	const handleBulkDelete = async () => {
+		const ids = [...selectedIds];
+		const revokedIds = ids.filter((id) => endpoints.find((ep) => ep.id === id && ep.revoked));
+		if (revokedIds.length === 0) return;
+		if (!confirm(`Permanently delete ${revokedIds.length} endpoint${revokedIds.length > 1 ? 's' : ''}? This cannot be undone.`)) return;
+		setBulkLoading(true);
+		try {
+			await bulkDeleteUpstreamR2Endpoints(revokedIds);
+			setSelectedIds(new Set());
+			await fetchEndpoints();
+		} catch (e: any) {
+			setError(e.message ?? 'Bulk delete failed');
+		} finally {
+			setBulkLoading(false);
+		}
+	};
+
+	const selectedActiveCount = [...selectedIds].filter((id) => endpoints.find((ep) => ep.id === id && !ep.revoked)).length;
+	const selectedRevokedCount = [...selectedIds].filter((id) => endpoints.find((ep) => ep.id === id && ep.revoked)).length;
+
 	const activeCount = endpoints.filter((e) => !e.revoked).length;
 	const revokedCount = endpoints.filter((e) => e.revoked).length;
 
@@ -280,6 +342,42 @@ export function UpstreamR2Page() {
 				</TabsList>
 			</Tabs>
 
+			{/* ── Bulk actions bar ────────────────────────────────── */}
+			{selectedIds.size > 0 && (
+				<div className="flex items-center gap-3 rounded-lg border border-lv-purple/30 bg-lv-purple/10 px-4 py-2">
+					<span className="text-sm font-data text-lv-purple">{selectedIds.size} selected</span>
+					<div className="ml-auto flex gap-2">
+						{selectedActiveCount > 0 && (
+							<Button
+								size="sm"
+								variant="outline"
+								className="text-lv-red border-lv-red/30"
+								onClick={handleBulkRevoke}
+								disabled={bulkLoading}
+							>
+								{bulkLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldOff className="h-3.5 w-3.5" />}
+								Revoke ({selectedActiveCount})
+							</Button>
+						)}
+						{selectedRevokedCount > 0 && (
+							<Button
+								size="sm"
+								variant="outline"
+								className="text-lv-red border-lv-red/30"
+								onClick={handleBulkDelete}
+								disabled={bulkLoading}
+							>
+								{bulkLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+								Delete ({selectedRevokedCount})
+							</Button>
+						)}
+						<Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
+							Clear
+						</Button>
+					</div>
+				</div>
+			)}
+
 			{/* ── Loading ────────────────────────────────────────── */}
 			{loading && <EndpointsTableSkeleton />}
 
@@ -300,6 +398,14 @@ export function UpstreamR2Page() {
 						<Table>
 							<TableHeader>
 								<TableRow>
+									<TableHead className="w-8">
+										<input
+											type="checkbox"
+											checked={endpoints.length > 0 && selectedIds.size === endpoints.length}
+											onChange={toggleSelectAll}
+											className="rounded border-border"
+										/>
+									</TableHead>
 									<TableHead className={T.sectionLabel}>Name</TableHead>
 									<TableHead className={T.sectionLabel}>ID</TableHead>
 									<TableHead className={T.sectionLabel}>Endpoint</TableHead>
@@ -314,6 +420,14 @@ export function UpstreamR2Page() {
 							<TableBody>
 								{pageItems.map((ep) => (
 									<TableRow key={ep.id}>
+										<TableCell className="w-8">
+											<input
+												type="checkbox"
+												checked={selectedIds.has(ep.id)}
+												onChange={() => toggleSelect(ep.id)}
+												className="rounded border-border"
+											/>
+										</TableCell>
 										<TableCell className={T.tableRowName}>{ep.name}</TableCell>
 										<TableCell>
 											<div className="flex items-center gap-1">

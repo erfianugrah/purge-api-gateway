@@ -428,6 +428,22 @@ export class Gatekeeper extends DurableObject<Env> {
 		return this.upstreamTokens.revokeToken(id);
 	}
 
+	async deleteUpstreamToken(id: string): Promise<boolean> {
+		return this.upstreamTokens.deleteToken(id);
+	}
+
+	async bulkRevokeUpstreamTokens(ids: string[]): Promise<BulkResult> {
+		return this.upstreamTokens.bulkRevoke(ids);
+	}
+
+	async bulkDeleteUpstreamTokens(ids: string[]): Promise<BulkResult> {
+		return this.upstreamTokens.bulkDelete(ids);
+	}
+
+	async bulkInspectUpstreamTokens(ids: string[], wouldBecome: string): Promise<BulkDryRunResult> {
+		return this.upstreamTokens.bulkInspect(ids, wouldBecome);
+	}
+
 	/** Resolve the CF API token for a given zone. Returns null if no match. */
 	async resolveUpstreamToken(zoneId: string): Promise<string | null> {
 		return this.upstreamTokens.resolveTokenForZone(zoneId);
@@ -449,6 +465,22 @@ export class Gatekeeper extends DurableObject<Env> {
 
 	async revokeUpstreamR2(id: string): Promise<boolean> {
 		return this.upstreamR2.revokeEndpoint(id);
+	}
+
+	async deleteUpstreamR2(id: string): Promise<boolean> {
+		return this.upstreamR2.deleteEndpoint(id);
+	}
+
+	async bulkRevokeUpstreamR2(ids: string[]): Promise<BulkResult> {
+		return this.upstreamR2.bulkRevoke(ids);
+	}
+
+	async bulkDeleteUpstreamR2(ids: string[]): Promise<BulkResult> {
+		return this.upstreamR2.bulkDelete(ids);
+	}
+
+	async bulkInspectUpstreamR2(ids: string[], wouldBecome: string): Promise<BulkDryRunResult> {
+		return this.upstreamR2.bulkInspect(ids, wouldBecome);
 	}
 
 	/** Resolve R2 credentials for a bucket. Returns null if no match. */

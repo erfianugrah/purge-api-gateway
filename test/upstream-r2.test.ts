@@ -238,6 +238,232 @@ describe('Upstream R2 — validation', () => {
 	});
 });
 
+describe('Upstream R2 — permanent delete', () => {
+	it('DELETE ?permanent=true removes endpoint entirely', async () => {
+		const createRes = await SELF.fetch('http://localhost/admin/upstream-r2', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({
+				name: 'perm-del-test',
+				access_key_id: 'PKIAIOSFODNN7EXAMPLE',
+				secret_access_key: 'pJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+				endpoint: 'https://permdel.r2.cloudflarestorage.com',
+				bucket_names: ['*'],
+			}),
+		});
+		const { result } = await createRes.json<any>();
+		const endpointId = result.id;
+
+		const delRes = await SELF.fetch(`http://localhost/admin/upstream-r2/${endpointId}?permanent=true`, {
+			method: 'DELETE',
+			headers: adminHeaders(),
+		});
+		expect(delRes.status).toBe(200);
+		const delData = await delRes.json<any>();
+		expect(delData.result.deleted).toBe(true);
+
+		const getRes = await SELF.fetch(`http://localhost/admin/upstream-r2/${endpointId}`, { headers: adminHeaders() });
+		expect(getRes.status).toBe(404);
+	});
+
+	it('permanent delete nonexistent -> 404', async () => {
+		const res = await SELF.fetch('http://localhost/admin/upstream-r2/upr2_doesnotexist00000?permanent=true', {
+			method: 'DELETE',
+			headers: adminHeaders(),
+		});
+		expect(res.status).toBe(404);
+	});
+});
+
+describe('Upstream R2 — bulk revoke', () => {
+	it('bulk-revoke mix of active, already-revoked, not-found', async () => {
+		const c1 = await SELF.fetch('http://localhost/admin/upstream-r2', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({
+				name: 'bulk-r-1',
+				access_key_id: 'RKIAIOSFODNN7EXAMPL1',
+				secret_access_key: 'rJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKE1',
+				endpoint: 'https://bulkr1.r2.cloudflarestorage.com',
+				bucket_names: ['*'],
+			}),
+		});
+		const e1 = (await c1.json<any>()).result.id;
+
+		const c2 = await SELF.fetch('http://localhost/admin/upstream-r2', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({
+				name: 'bulk-r-2',
+				access_key_id: 'RKIAIOSFODNN7EXAMPL2',
+				secret_access_key: 'rJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKE2',
+				endpoint: 'https://bulkr2.r2.cloudflarestorage.com',
+				bucket_names: ['*'],
+			}),
+		});
+		const e2 = (await c2.json<any>()).result.id;
+
+		// Pre-revoke e2
+		await SELF.fetch(`http://localhost/admin/upstream-r2/${e2}`, { method: 'DELETE', headers: adminHeaders() });
+
+		const res = await SELF.fetch('http://localhost/admin/upstream-r2/bulk-revoke', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({ ids: [e1, e2, 'upr2_doesnotexist00000'], confirm_count: 3 }),
+		});
+		expect(res.status).toBe(200);
+		const data = await res.json<any>();
+		expect(data.result.processed).toBe(3);
+
+		const statuses = Object.fromEntries(data.result.results.map((r: any) => [r.id, r.status]));
+		expect(statuses[e1]).toBe('revoked');
+		expect(statuses[e2]).toBe('already_revoked');
+		expect(statuses['upr2_doesnotexist00000']).toBe('not_found');
+	});
+
+	it('bulk-revoke dry_run returns preview without modifying', async () => {
+		const c1 = await SELF.fetch('http://localhost/admin/upstream-r2', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({
+				name: 'bulk-dry-1',
+				access_key_id: 'DKIAIOSFODNN7EXAMPL1',
+				secret_access_key: 'dJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKE1',
+				endpoint: 'https://bulkdry1.r2.cloudflarestorage.com',
+				bucket_names: ['*'],
+			}),
+		});
+		const e1 = (await c1.json<any>()).result.id;
+
+		const res = await SELF.fetch('http://localhost/admin/upstream-r2/bulk-revoke', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({ ids: [e1], confirm_count: 1, dry_run: true }),
+		});
+		expect(res.status).toBe(200);
+		const data = await res.json<any>();
+		expect(data.result.dry_run).toBe(true);
+		expect(data.result.items[0].current_status).toBe('active');
+		expect(data.result.items[0].would_become).toBe('revoked');
+
+		// Endpoint should still be active
+		const getRes = await SELF.fetch(`http://localhost/admin/upstream-r2/${e1}`, { headers: adminHeaders() });
+		const getEp = await getRes.json<any>();
+		expect(getEp.result.revoked).toBe(0);
+	});
+
+	it('bulk-revoke rejects confirm_count mismatch', async () => {
+		const res = await SELF.fetch('http://localhost/admin/upstream-r2/bulk-revoke', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({ ids: ['upr2_a', 'upr2_b'], confirm_count: 5 }),
+		});
+		expect(res.status).toBe(400);
+		const data = await res.json<any>();
+		expect(data.errors[0].message).toMatch(/confirm_count/);
+	});
+
+	it('bulk-revoke rejects empty array', async () => {
+		const res = await SELF.fetch('http://localhost/admin/upstream-r2/bulk-revoke', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({ ids: [], confirm_count: 0 }),
+		});
+		expect(res.status).toBe(400);
+		const data = await res.json<any>();
+		expect(data.errors[0].message).toMatch(/non-empty/);
+	});
+
+	it('bulk-revoke rejects over 100 items', async () => {
+		const ids = Array.from({ length: 101 }, (_, i) => `upr2_${String(i).padStart(24, '0')}`);
+		const res = await SELF.fetch('http://localhost/admin/upstream-r2/bulk-revoke', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({ ids, confirm_count: 101 }),
+		});
+		expect(res.status).toBe(400);
+		const data = await res.json<any>();
+		expect(data.errors[0].message).toMatch(/100/);
+	});
+});
+
+describe('Upstream R2 — bulk delete', () => {
+	it('bulk-delete mix of existing and not-found', async () => {
+		const c1 = await SELF.fetch('http://localhost/admin/upstream-r2', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({
+				name: 'bulk-d-1',
+				access_key_id: 'EKIAIOSFODNN7EXAMPL1',
+				secret_access_key: 'eJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKE1',
+				endpoint: 'https://bulkd1.r2.cloudflarestorage.com',
+				bucket_names: ['*'],
+			}),
+		});
+		const e1 = (await c1.json<any>()).result.id;
+
+		const c2 = await SELF.fetch('http://localhost/admin/upstream-r2', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({
+				name: 'bulk-d-2',
+				access_key_id: 'EKIAIOSFODNN7EXAMPL2',
+				secret_access_key: 'eJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKE2',
+				endpoint: 'https://bulkd2.r2.cloudflarestorage.com',
+				bucket_names: ['*'],
+			}),
+		});
+		const e2 = (await c2.json<any>()).result.id;
+
+		const res = await SELF.fetch('http://localhost/admin/upstream-r2/bulk-delete', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({ ids: [e1, e2, 'upr2_doesnotexist00000'], confirm_count: 3 }),
+		});
+		expect(res.status).toBe(200);
+		const data = await res.json<any>();
+		expect(data.result.processed).toBe(3);
+
+		const statuses = Object.fromEntries(data.result.results.map((r: any) => [r.id, r.status]));
+		expect(statuses[e1]).toBe('deleted');
+		expect(statuses[e2]).toBe('deleted');
+		expect(statuses['upr2_doesnotexist00000']).toBe('not_found');
+
+		// Endpoints should be gone
+		const get1 = await SELF.fetch(`http://localhost/admin/upstream-r2/${e1}`, { headers: adminHeaders() });
+		expect(get1.status).toBe(404);
+	});
+
+	it('bulk-delete dry_run returns preview without modifying', async () => {
+		const c1 = await SELF.fetch('http://localhost/admin/upstream-r2', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({
+				name: 'bulk-dry-d-1',
+				access_key_id: 'FKIAIOSFODNN7EXAMPL1',
+				secret_access_key: 'fJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKE1',
+				endpoint: 'https://bulkdryd1.r2.cloudflarestorage.com',
+				bucket_names: ['*'],
+			}),
+		});
+		const e1 = (await c1.json<any>()).result.id;
+
+		const res = await SELF.fetch('http://localhost/admin/upstream-r2/bulk-delete', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({ ids: [e1], confirm_count: 1, dry_run: true }),
+		});
+		expect(res.status).toBe(200);
+		const data = await res.json<any>();
+		expect(data.result.dry_run).toBe(true);
+		expect(data.result.items[0].would_become).toBe('deleted');
+
+		// Endpoint should still exist
+		const getRes = await SELF.fetch(`http://localhost/admin/upstream-r2/${e1}`, { headers: adminHeaders() });
+		expect(getRes.status).toBe(200);
+	});
+});
+
 describe('Upstream R2 — authentication', () => {
 	it('no admin key -> 401', async () => {
 		const res = await SELF.fetch('http://localhost/admin/upstream-r2');
