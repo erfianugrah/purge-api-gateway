@@ -9,6 +9,8 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { PolicyBuilder } from '@/components/PolicyBuilder';
+import { usePagination } from '@/hooks/use-pagination';
+import { TablePagination } from '@/components/TablePagination';
 import { listKeys, createKey, revokeKey, deleteKey, bulkRevokeKeys, bulkDeleteKeys } from '@/lib/api';
 import type { ApiKey, PolicyDocument } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -356,6 +358,8 @@ export function KeysPage() {
 	const activeCount = keys.filter((k) => !k.revoked).length;
 	const revokedCount = keys.filter((k) => k.revoked).length;
 
+	const { pageItems, page, pageSize, totalItems, totalPages, pageSizeOptions, setPage, setPageSize } = usePagination(filteredKeys);
+
 	return (
 		<div className="space-y-6">
 			{/* ── Header ─────────────────────────────────────────────── */}
@@ -513,7 +517,7 @@ export function KeysPage() {
 									</TableRow>
 								</TableHeader>
 								<TableBody>
-									{filteredKeys.map((k) => (
+									{pageItems.map((k) => (
 										<TableRow key={k.id} className={selectedIds.has(k.id) ? 'bg-lv-purple/5' : undefined}>
 											<TableCell className="w-8">
 												<input
@@ -581,6 +585,16 @@ export function KeysPage() {
 								</TableBody>
 							</Table>
 						)}
+						<TablePagination
+							page={page}
+							totalPages={totalPages}
+							totalItems={totalItems}
+							pageSize={pageSize}
+							pageSizeOptions={pageSizeOptions}
+							onPageChange={setPage}
+							onPageSizeChange={setPageSize}
+							noun="keys"
+						/>
 					</CardContent>
 				</Card>
 			)}

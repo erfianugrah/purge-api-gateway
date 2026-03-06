@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { usePagination } from '@/hooks/use-pagination';
+import { TablePagination } from '@/components/TablePagination';
 import { getEvents, getS3Events } from '@/lib/api';
 import type { PurgeEvent, S3Event } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -515,6 +517,17 @@ export function AnalyticsPage() {
 		return groups;
 	}, [filteredEvents, sortField, sortDir]);
 
+	const {
+		pageItems: pageGroups,
+		page: pgPage,
+		pageSize: pgSize,
+		totalItems: pgTotal,
+		totalPages: pgTotalPages,
+		pageSizeOptions: pgSizeOptions,
+		setPage: pgSetPage,
+		setPageSize: pgSetPageSize,
+	} = usePagination(flightGroups, { defaultPageSize: 50 });
+
 	// ── Counts for tab labels ────────────────────────────────────
 
 	const purgeCount = purgeEvents.length;
@@ -694,7 +707,7 @@ export function AnalyticsPage() {
 									</TableRow>
 								</TableHeader>
 								<TableBody>
-									{flightGroups.map((group) => {
+									{pageGroups.map((group) => {
 										const ev = group.leader;
 										const rowKey = `${ev.source}-${ev.id}`;
 										const isExpanded = expandedIds.has(rowKey);
@@ -845,6 +858,16 @@ export function AnalyticsPage() {
 									})}
 								</TableBody>
 							</Table>
+							<TablePagination
+								page={pgPage}
+								totalPages={pgTotalPages}
+								totalItems={pgTotal}
+								pageSize={pgSize}
+								pageSizeOptions={pgSizeOptions}
+								onPageChange={pgSetPage}
+								onPageSizeChange={pgSetPageSize}
+								noun="flights"
+							/>
 						</CardContent>
 					</Card>
 				)}

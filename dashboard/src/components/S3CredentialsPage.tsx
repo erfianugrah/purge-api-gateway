@@ -10,6 +10,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { S3PolicyBuilder } from '@/components/S3PolicyBuilder';
+import { summarizeStatement } from '@/components/ConditionEditor';
+import { usePagination } from '@/hooks/use-pagination';
+import { TablePagination } from '@/components/TablePagination';
 import {
 	listS3Credentials,
 	createS3Credential,
@@ -223,7 +226,7 @@ function CredentialsTableSkeleton() {
 // ─── Policy Preview ─────────────────────────────────────────────────
 
 function PolicyPreview({ policyJson }: { policyJson: string }) {
-	const [expanded, setExpanded] = useState(false);
+	const [showJson, setShowJson] = useState(false);
 
 	let parsed: PolicyDocument | null = null;
 	try {
@@ -234,20 +237,38 @@ function PolicyPreview({ policyJson }: { policyJson: string }) {
 
 	if (!parsed) return <span className={T.muted}>Invalid policy</span>;
 
-	const summary = parsed.statements
-		.map((s) => {
-			const actions = s.actions.length > 2 ? `${s.actions.slice(0, 2).join(', ')}...` : s.actions.join(', ');
-			return `${actions} on ${s.resources[0]}`;
-		})
-		.join('; ');
-
 	return (
-		<div>
-			<button type="button" onClick={() => setExpanded(!expanded)} className="text-xs text-lv-cyan hover:underline font-data">
-				{expanded ? 'Hide' : summary}
+		<div className="space-y-1">
+			{parsed.statements.map((s, i) => {
+				const prefix = s.actions.some((a: string) => a.startsWith('s3:'))
+					? 's3'
+					: s.actions.some((a: string) => a.startsWith('purge:'))
+						? 'purge'
+						: 'admin';
+				const summary = summarizeStatement(s, prefix);
+				return (
+					<div key={i} className="flex items-start gap-1.5">
+						<Badge
+							className={cn(
+								'shrink-0 text-[9px] px-1.5 py-0',
+								s.effect === 'deny' ? 'bg-lv-red/20 text-lv-red border-lv-red/30' : 'bg-lv-green/20 text-lv-green border-lv-green/30',
+							)}
+						>
+							{s.effect === 'deny' ? 'DENY' : 'ALLOW'}
+						</Badge>
+						<span className="text-[11px] font-data text-muted-foreground leading-tight">{summary.replace(/^(Allow|Deny)\s/, '')}</span>
+					</div>
+				);
+			})}
+			<button
+				type="button"
+				onClick={() => setShowJson(!showJson)}
+				className="text-[10px] text-lv-blue/60 hover:text-lv-blue hover:underline font-data"
+			>
+				{showJson ? 'Hide JSON' : 'Show JSON'}
 			</button>
-			{expanded && (
-				<pre className="mt-1 rounded border border-border bg-background/50 p-2 text-[10px] font-data text-muted-foreground overflow-x-auto max-h-32 overflow-y-auto">
+			{showJson && (
+				<pre className="rounded border border-border bg-background/50 p-2 text-[10px] font-data text-muted-foreground overflow-x-auto max-h-32 overflow-y-auto">
 					{JSON.stringify(parsed, null, 2)}
 				</pre>
 			)}
@@ -380,6 +401,8 @@ export function S3CredentialsPage() {
 	const activeCount = credentials.filter((c) => !c.revoked).length;
 	const revokedCount = credentials.filter((c) => c.revoked).length;
 
+	const { pageItems, page, pageSize, totalItems, totalPages, pageSizeOptions, setPage, setPageSize } = usePagination(credentials);
+
 	return (
 		<div className="space-y-6">
 			{/* ── Header row ──────────────────────────────────────── */}
@@ -483,7 +506,7 @@ export function S3CredentialsPage() {
 								</TableRow>
 							</TableHeader>
 							<TableBody>
-								{credentials.map((c) => (
+								{pageItems.map((c) => (
 									<TableRow key={c.access_key_id} className={selectedIds.has(c.access_key_id) ? 'bg-lv-purple/5' : undefined}>
 										<TableCell className="w-8">
 											<input
@@ -552,6 +575,16 @@ export function S3CredentialsPage() {
 								))}
 							</TableBody>
 						</Table>
+						<TablePagination
+							page={page}
+							totalPages={totalPages}
+							totalItems={totalItems}
+							pageSize={pageSize}
+							pageSizeOptions={pageSizeOptions}
+							onPageChange={setPage}
+							onPageSizeChange={setPageSize}
+							noun="credentials"
+						/>
 					</CardContent>
 				</Card>
 			)}

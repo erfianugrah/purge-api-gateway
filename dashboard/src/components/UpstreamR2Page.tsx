@@ -9,6 +9,8 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { usePagination } from '@/hooks/use-pagination';
+import { TablePagination } from '@/components/TablePagination';
 import { listUpstreamR2, createUpstreamR2, revokeUpstreamR2 } from '@/lib/api';
 import type { UpstreamR2 } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -251,6 +253,8 @@ export function UpstreamR2Page() {
 	const activeCount = endpoints.filter((e) => !e.revoked).length;
 	const revokedCount = endpoints.filter((e) => e.revoked).length;
 
+	const { pageItems, page, pageSize, totalItems, totalPages, pageSizeOptions, setPage, setPageSize } = usePagination(endpoints);
+
 	return (
 		<div className="space-y-6">
 			{/* ── Header row ──────────────────────────────────────── */}
@@ -308,7 +312,7 @@ export function UpstreamR2Page() {
 								</TableRow>
 							</TableHeader>
 							<TableBody>
-								{endpoints.map((ep) => (
+								{pageItems.map((ep) => (
 									<TableRow key={ep.id}>
 										<TableCell className={T.tableRowName}>{ep.name}</TableCell>
 										<TableCell>
@@ -364,6 +368,16 @@ export function UpstreamR2Page() {
 								))}
 							</TableBody>
 						</Table>
+						<TablePagination
+							page={page}
+							totalPages={totalPages}
+							totalItems={totalItems}
+							pageSize={pageSize}
+							pageSizeOptions={pageSizeOptions}
+							onPageChange={setPage}
+							onPageSizeChange={setPageSize}
+							noun="endpoints"
+						/>
 					</CardContent>
 				</Card>
 			)}
