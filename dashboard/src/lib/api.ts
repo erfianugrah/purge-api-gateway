@@ -375,7 +375,6 @@ export interface UpstreamToken {
 	token_preview: string;
 	created_at: number;
 	created_by: string | null;
-	revoked: number;
 }
 
 export interface CreateUpstreamTokenRequest {
@@ -385,11 +384,8 @@ export interface CreateUpstreamTokenRequest {
 	created_by?: string;
 }
 
-export async function listUpstreamTokens(status?: 'active' | 'revoked'): Promise<UpstreamToken[]> {
-	const params = new URLSearchParams();
-	if (status) params.set('status', status);
-	const qs = params.toString();
-	return apiFetch<UpstreamToken[]>(`/admin/upstream-tokens${qs ? `?${qs}` : ''}`);
+export async function listUpstreamTokens(): Promise<UpstreamToken[]> {
+	return apiFetch<UpstreamToken[]>('/admin/upstream-tokens');
 }
 
 export async function getUpstreamToken(id: string): Promise<UpstreamToken> {
@@ -403,22 +399,9 @@ export async function createUpstreamToken(req: CreateUpstreamTokenRequest): Prom
 	});
 }
 
-export async function revokeUpstreamToken(id: string): Promise<{ revoked: boolean }> {
-	return apiFetch<{ revoked: boolean }>(`/admin/upstream-tokens/${id}`, {
-		method: 'DELETE',
-	});
-}
-
 export async function deleteUpstreamToken(id: string): Promise<{ deleted: boolean }> {
-	return apiFetch<{ deleted: boolean }>(`/admin/upstream-tokens/${id}?permanent=true`, {
+	return apiFetch<{ deleted: boolean }>(`/admin/upstream-tokens/${id}`, {
 		method: 'DELETE',
-	});
-}
-
-export async function bulkRevokeUpstreamTokens(ids: string[]): Promise<BulkResult> {
-	return apiFetch<BulkResult>('/admin/upstream-tokens/bulk-revoke', {
-		method: 'POST',
-		body: JSON.stringify({ ids, confirm_count: ids.length }),
 	});
 }
 
@@ -440,7 +423,6 @@ export interface UpstreamR2 {
 	endpoint: string;
 	created_at: number;
 	created_by: string | null;
-	revoked: number;
 }
 
 export interface CreateUpstreamR2Request {
@@ -452,11 +434,8 @@ export interface CreateUpstreamR2Request {
 	created_by?: string;
 }
 
-export async function listUpstreamR2(status?: 'active' | 'revoked'): Promise<UpstreamR2[]> {
-	const params = new URLSearchParams();
-	if (status) params.set('status', status);
-	const qs = params.toString();
-	return apiFetch<UpstreamR2[]>(`/admin/upstream-r2${qs ? `?${qs}` : ''}`);
+export async function listUpstreamR2(): Promise<UpstreamR2[]> {
+	return apiFetch<UpstreamR2[]>('/admin/upstream-r2');
 }
 
 export async function getUpstreamR2(id: string): Promise<UpstreamR2> {
@@ -470,22 +449,9 @@ export async function createUpstreamR2(req: CreateUpstreamR2Request): Promise<Up
 	});
 }
 
-export async function revokeUpstreamR2(id: string): Promise<{ revoked: boolean }> {
-	return apiFetch<{ revoked: boolean }>(`/admin/upstream-r2/${id}`, {
-		method: 'DELETE',
-	});
-}
-
 export async function deleteUpstreamR2(id: string): Promise<{ deleted: boolean }> {
-	return apiFetch<{ deleted: boolean }>(`/admin/upstream-r2/${id}?permanent=true`, {
+	return apiFetch<{ deleted: boolean }>(`/admin/upstream-r2/${id}`, {
 		method: 'DELETE',
-	});
-}
-
-export async function bulkRevokeUpstreamR2Endpoints(ids: string[]): Promise<BulkResult> {
-	return apiFetch<BulkResult>('/admin/upstream-r2/bulk-revoke', {
-		method: 'POST',
-		body: JSON.stringify({ ids, confirm_count: ids.length }),
 	});
 }
 

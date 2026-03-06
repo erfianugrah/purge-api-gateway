@@ -1,22 +1,6 @@
 import { defineCommand } from 'citty';
 import { resolveConfig, request, assertOk } from '../client.js';
-import {
-	success,
-	info,
-	warn,
-	error,
-	bold,
-	dim,
-	cyan,
-	green,
-	red,
-	yellow,
-	table,
-	label,
-	printJson,
-	formatDuration,
-	symbols,
-} from '../ui.js';
+import { success, info, warn, error, bold, dim, cyan, green, red, yellow, table, label, printJson, formatDuration } from '../ui.js';
 
 /** Shared args across upstream-r2 commands. */
 const globalArgs = {
@@ -116,16 +100,11 @@ const list = defineCommand({
 	meta: { name: 'list', description: 'List all registered R2 endpoints' },
 	args: {
 		...globalArgs,
-		'active-only': {
-			type: 'boolean',
-			description: 'Only show active (non-revoked) endpoints',
-		},
 	},
 	async run({ args }) {
 		const config = resolveConfig(args);
 
-		const statusFilter = args['active-only'] ? '?status=active' : '';
-		const { status, data, durationMs } = await request(config, 'GET', `/admin/upstream-r2${statusFilter}`, {
+		const { status, data, durationMs } = await request(config, 'GET', '/admin/upstream-r2', {
 			auth: 'admin',
 			label: 'Fetching R2 endpoints...',
 		});
@@ -149,14 +128,13 @@ const list = defineCommand({
 		console.error('');
 
 		const rows = result.map((ep) => {
-			const statusLabel = (ep.revoked as number) === 1 ? red('revoked') : green('active');
 			const created = new Date(ep.created_at as number).toISOString().slice(0, 19).replace('T', ' ');
 			const buckets = ep.bucket_names as string;
 
-			return [cyan(ep.id as string), ep.name as string, buckets, statusLabel, created];
+			return [cyan(ep.id as string), ep.name as string, buckets, created];
 		});
 
-		table(['ID', 'Name', 'Buckets', 'Status', 'Created'], rows);
+		table(['ID', 'Name', 'Buckets', 'Created'], rows);
 		console.error('');
 	},
 });
@@ -195,14 +173,14 @@ const get = defineCommand({
 	},
 });
 
-// --- upstream-r2 revoke ---
-const revoke = defineCommand({
-	meta: { name: 'revoke', description: 'Revoke an R2 endpoint registration (irreversible)' },
+// --- upstream-r2 delete ---
+const del = defineCommand({
+	meta: { name: 'delete', description: 'Delete an R2 endpoint registration (permanent, irreversible)' },
 	args: {
 		...globalArgs,
 		id: {
 			type: 'string',
-			description: 'The R2 endpoint ID to revoke (upr2_...)',
+			description: 'The R2 endpoint ID to delete (upr2_...)',
 			required: true,
 		},
 		force: {
@@ -216,7 +194,7 @@ const revoke = defineCommand({
 		const endpointId = args.id;
 
 		if (!args.force && process.stdin.isTTY) {
-			warn(`You are about to revoke R2 endpoint ${bold(endpointId)}. This cannot be undone.`);
+			warn(`You are about to delete R2 endpoint ${bold(endpointId)}. This cannot be undone.`);
 			process.stderr.write(`  Continue? [y/N] `);
 
 			const confirmed = await new Promise<boolean>((resolve) => {
@@ -239,7 +217,7 @@ const revoke = defineCommand({
 
 		const { status, data, durationMs } = await request(config, 'DELETE', `/admin/upstream-r2/${encodeURIComponent(endpointId)}`, {
 			auth: 'admin',
-			label: 'Revoking R2 endpoint...',
+			label: 'Deleting R2 endpoint...',
 		});
 
 		if (args.json) {
@@ -250,78 +228,7 @@ const revoke = defineCommand({
 
 		assertOk(status, data);
 		console.error('');
-		success(`R2 endpoint ${bold(endpointId)} revoked ${dim(`(${formatDuration(durationMs)})`)}`);
-		console.error('');
-	},
-});
-
-// --- upstream-r2 bulk-revoke ---
-const bulkRevoke = defineCommand({
-	meta: { name: 'bulk-revoke', description: 'Bulk soft-revoke multiple R2 endpoints' },
-	args: {
-		...globalArgs,
-		ids: {
-			type: 'string',
-			description: 'Comma-separated list of endpoint IDs (upr2_...)',
-			required: true,
-		},
-		confirm: {
-			type: 'boolean',
-			description: 'Execute the operation (without this flag, runs in dry-run mode)',
-		},
-	},
-	async run({ args }) {
-		const config = resolveConfig(args);
-		const ids = args.ids
-			.split(',')
-			.map((s: string) => s.trim())
-			.filter(Boolean);
-
-		if (ids.length === 0) {
-			error('No endpoint IDs provided');
-			process.exit(1);
-		}
-
-		const body: Record<string, unknown> = {
-			ids,
-			confirm_count: ids.length,
-			dry_run: !args.confirm,
-		};
-
-		const { status, data, durationMs } = await request(config, 'POST', '/admin/upstream-r2/bulk-revoke', {
-			body,
-			auth: 'admin',
-			label: args.confirm ? 'Bulk revoking R2 endpoints...' : 'Previewing bulk revoke (dry run)...',
-		});
-
-		if (args.json) {
-			assertOk(status, data);
-			printJson(data);
-			return;
-		}
-
-		assertOk(status, data);
-		const result = (data as Record<string, unknown>).result as Record<string, unknown>;
-
-		console.error('');
-		if (result.dry_run) {
-			warn(`Dry run — no changes made ${dim(`(${formatDuration(durationMs)})`)}`);
-			console.error('');
-			const items = result.items as { id: string; current_status: string; would_become: string }[];
-			const rows = items.map((i) => [cyan(i.id), i.current_status, yellow(i.would_become)]);
-			table(['ID', 'Current Status', 'Would Become'], rows);
-			console.error('');
-			info(`Re-run with ${bold('--confirm')} to execute.`);
-		} else {
-			success(`Bulk revoke complete ${dim(`(${formatDuration(durationMs)})`)}`);
-			console.error('');
-			const results = result.results as { id: string; status: string }[];
-			const rows = results.map((r) => {
-				const statusLabel = r.status === 'revoked' ? green(r.status) : r.status === 'not_found' ? red(r.status) : yellow(r.status);
-				return [cyan(r.id), statusLabel];
-			});
-			table(['ID', 'Status'], rows);
-		}
+		success(`R2 endpoint ${bold(endpointId)} deleted ${dim(`(${formatDuration(durationMs)})`)}`);
 		console.error('');
 	},
 });
@@ -400,14 +307,11 @@ const bulkDelete = defineCommand({
 // --- Formatting helper ---
 
 function formatUpstreamR2(ep: Record<string, unknown>): void {
-	const status = (ep.revoked as number) === 1 ? red('revoked') : green('active');
-
 	label('ID', bold(ep.id as string));
 	label('Name', ep.name as string);
 	label('Access key preview', dim(ep.access_key_preview as string));
 	label('Endpoint', ep.endpoint as string);
 	label('Bucket names', ep.bucket_names as string);
-	label('Status', status);
 	label('Created', new Date(ep.created_at as number).toISOString());
 	if (ep.created_by) {
 		label('Created by', ep.created_by as string);
@@ -417,5 +321,5 @@ function formatUpstreamR2(ep: Record<string, unknown>): void {
 // --- upstream-r2 (parent) ---
 export default defineCommand({
 	meta: { name: 'upstream-r2', description: 'Manage upstream R2 endpoints for S3 proxy' },
-	subCommands: { create, list, get, revoke, 'bulk-revoke': bulkRevoke, 'bulk-delete': bulkDelete },
+	subCommands: { create, list, get, delete: del, 'bulk-delete': bulkDelete },
 });

@@ -5,7 +5,7 @@ import { adminHeaders, ADMIN_KEY } from './helpers';
 // --- Tests ---
 
 describe('Upstream tokens — CRUD', () => {
-	it('create -> list -> get -> revoke -> verify revoked (full lifecycle)', async () => {
+	it('create -> list -> get -> delete -> verify gone (full lifecycle)', async () => {
 		// --- Create ---
 		const createRes = await SELF.fetch('http://localhost/admin/upstream-tokens', {
 			method: 'POST',
@@ -24,10 +24,11 @@ describe('Upstream tokens — CRUD', () => {
 		expect(createData.result.zone_ids).toBe('*');
 		// preview: first 4 + "..." + last 4 = "cf-t...cdef"
 		expect(createData.result.token_preview).toMatch(/^.{4}\.\.\..{4}$/);
-		expect(createData.result.revoked).toBe(0);
 		expect(createData.result.created_at).toBeGreaterThan(0);
 		// Secret must never appear in response
 		expect(createData.result.token).toBeUndefined();
+		// No revoked field on upstream tokens
+		expect(createData.result.revoked).toBeUndefined();
 		const tokenId = createData.result.id;
 
 		// --- List (includes created token) ---
@@ -44,16 +45,6 @@ describe('Upstream tokens — CRUD', () => {
 		// Secret must never appear in list
 		expect(found.token).toBeUndefined();
 
-		// --- List with status=active ---
-		const activeRes = await SELF.fetch('http://localhost/admin/upstream-tokens?status=active', {
-			headers: adminHeaders(),
-		});
-		expect(activeRes.status).toBe(200);
-		const activeData = await activeRes.json<any>();
-		for (const t of activeData.result) {
-			expect(t.revoked).toBe(0);
-		}
-
 		// --- Get by ID ---
 		const getRes = await SELF.fetch(`http://localhost/admin/upstream-tokens/${tokenId}`, {
 			headers: adminHeaders(),
@@ -65,31 +56,27 @@ describe('Upstream tokens — CRUD', () => {
 		expect(getData.result.name).toBe('crud-test');
 		expect(getData.result.token).toBeUndefined();
 
-		// --- Revoke ---
-		const revokeRes = await SELF.fetch(`http://localhost/admin/upstream-tokens/${tokenId}`, {
+		// --- Delete ---
+		const delRes = await SELF.fetch(`http://localhost/admin/upstream-tokens/${tokenId}`, {
 			method: 'DELETE',
 			headers: adminHeaders(),
 		});
-		expect(revokeRes.status).toBe(200);
-		const revokeData = await revokeRes.json<any>();
-		expect(revokeData.result.revoked).toBe(true);
+		expect(delRes.status).toBe(200);
+		const delData = await delRes.json<any>();
+		expect(delData.result.deleted).toBe(true);
 
-		// --- Revoke already-revoked -> 404 ---
-		const revokeAgainRes = await SELF.fetch(`http://localhost/admin/upstream-tokens/${tokenId}`, {
+		// --- Delete already-deleted -> 404 ---
+		const delAgainRes = await SELF.fetch(`http://localhost/admin/upstream-tokens/${tokenId}`, {
 			method: 'DELETE',
 			headers: adminHeaders(),
 		});
-		expect(revokeAgainRes.status).toBe(404);
+		expect(delAgainRes.status).toBe(404);
 
-		// --- List with status=revoked -> includes revoked token ---
-		const revokedRes = await SELF.fetch('http://localhost/admin/upstream-tokens?status=revoked', {
+		// --- Verify gone ---
+		const getAfterRes = await SELF.fetch(`http://localhost/admin/upstream-tokens/${tokenId}`, {
 			headers: adminHeaders(),
 		});
-		expect(revokedRes.status).toBe(200);
-		const revokedData = await revokedRes.json<any>();
-		const revokedFound = revokedData.result.find((t: any) => t.id === tokenId);
-		expect(revokedFound).toBeDefined();
-		expect(revokedFound.revoked).toBe(1);
+		expect(getAfterRes.status).toBe(404);
 	});
 
 	it('create token with specific zone_ids -> comma-separated storage', async () => {
@@ -114,7 +101,7 @@ describe('Upstream tokens — CRUD', () => {
 		expect(res.status).toBe(404);
 	});
 
-	it('revoke nonexistent token -> 404', async () => {
+	it('delete nonexistent token -> 404', async () => {
 		const res = await SELF.fetch('http://localhost/admin/upstream-tokens/upt_does_not_exist', {
 			method: 'DELETE',
 			headers: adminHeaders(),
@@ -240,135 +227,6 @@ describe('Upstream tokens — authentication', () => {
 	});
 });
 
-describe('Upstream tokens — permanent delete', () => {
-	it('DELETE ?permanent=true removes token entirely', async () => {
-		// Create a token
-		const createRes = await SELF.fetch('http://localhost/admin/upstream-tokens', {
-			method: 'POST',
-			headers: adminHeaders(),
-			body: JSON.stringify({ name: 'perm-del-test', token: 'cf-perm-del-token-1234567890abcdef1234567890', zone_ids: ['*'] }),
-		});
-		const { result } = await createRes.json<any>();
-		const tokenId = result.id;
-
-		// Permanent delete
-		const delRes = await SELF.fetch(`http://localhost/admin/upstream-tokens/${tokenId}?permanent=true`, {
-			method: 'DELETE',
-			headers: adminHeaders(),
-		});
-		expect(delRes.status).toBe(200);
-		const delData = await delRes.json<any>();
-		expect(delData.result.deleted).toBe(true);
-
-		// Verify gone
-		const getRes = await SELF.fetch(`http://localhost/admin/upstream-tokens/${tokenId}`, { headers: adminHeaders() });
-		expect(getRes.status).toBe(404);
-	});
-
-	it('permanent delete nonexistent -> 404', async () => {
-		const res = await SELF.fetch('http://localhost/admin/upstream-tokens/upt_doesnotexist000000?permanent=true', {
-			method: 'DELETE',
-			headers: adminHeaders(),
-		});
-		expect(res.status).toBe(404);
-	});
-});
-
-describe('Upstream tokens — bulk revoke', () => {
-	it('bulk-revoke mix of active, already-revoked, not-found', async () => {
-		// Create 2 tokens
-		const c1 = await SELF.fetch('http://localhost/admin/upstream-tokens', {
-			method: 'POST',
-			headers: adminHeaders(),
-			body: JSON.stringify({ name: 'bulk-r-1', token: 'cf-bulk-r1-token-1234567890abcdef1234567890ab', zone_ids: ['*'] }),
-		});
-		const t1 = (await c1.json<any>()).result.id;
-
-		const c2 = await SELF.fetch('http://localhost/admin/upstream-tokens', {
-			method: 'POST',
-			headers: adminHeaders(),
-			body: JSON.stringify({ name: 'bulk-r-2', token: 'cf-bulk-r2-token-1234567890abcdef1234567890ab', zone_ids: ['*'] }),
-		});
-		const t2 = (await c2.json<any>()).result.id;
-
-		// Pre-revoke t2
-		await SELF.fetch(`http://localhost/admin/upstream-tokens/${t2}`, { method: 'DELETE', headers: adminHeaders() });
-
-		const res = await SELF.fetch('http://localhost/admin/upstream-tokens/bulk-revoke', {
-			method: 'POST',
-			headers: adminHeaders(),
-			body: JSON.stringify({ ids: [t1, t2, 'upt_doesnotexist000000'], confirm_count: 3 }),
-		});
-		expect(res.status).toBe(200);
-		const data = await res.json<any>();
-		expect(data.result.processed).toBe(3);
-
-		const statuses = Object.fromEntries(data.result.results.map((r: any) => [r.id, r.status]));
-		expect(statuses[t1]).toBe('revoked');
-		expect(statuses[t2]).toBe('already_revoked');
-		expect(statuses['upt_doesnotexist000000']).toBe('not_found');
-	});
-
-	it('bulk-revoke dry_run returns preview without modifying', async () => {
-		const c1 = await SELF.fetch('http://localhost/admin/upstream-tokens', {
-			method: 'POST',
-			headers: adminHeaders(),
-			body: JSON.stringify({ name: 'bulk-dry-1', token: 'cf-bulk-dry-token-1234567890abcdef123456789', zone_ids: ['*'] }),
-		});
-		const t1 = (await c1.json<any>()).result.id;
-
-		const res = await SELF.fetch('http://localhost/admin/upstream-tokens/bulk-revoke', {
-			method: 'POST',
-			headers: adminHeaders(),
-			body: JSON.stringify({ ids: [t1], confirm_count: 1, dry_run: true }),
-		});
-		expect(res.status).toBe(200);
-		const data = await res.json<any>();
-		expect(data.result.dry_run).toBe(true);
-		expect(data.result.items[0].current_status).toBe('active');
-		expect(data.result.items[0].would_become).toBe('revoked');
-
-		// Token should still be active
-		const getRes = await SELF.fetch(`http://localhost/admin/upstream-tokens/${t1}`, { headers: adminHeaders() });
-		const getToken = await getRes.json<any>();
-		expect(getToken.result.revoked).toBe(0);
-	});
-
-	it('bulk-revoke rejects confirm_count mismatch', async () => {
-		const res = await SELF.fetch('http://localhost/admin/upstream-tokens/bulk-revoke', {
-			method: 'POST',
-			headers: adminHeaders(),
-			body: JSON.stringify({ ids: ['upt_a', 'upt_b'], confirm_count: 5 }),
-		});
-		expect(res.status).toBe(400);
-		const data = await res.json<any>();
-		expect(data.errors[0].message).toMatch(/confirm_count/);
-	});
-
-	it('bulk-revoke rejects empty array', async () => {
-		const res = await SELF.fetch('http://localhost/admin/upstream-tokens/bulk-revoke', {
-			method: 'POST',
-			headers: adminHeaders(),
-			body: JSON.stringify({ ids: [], confirm_count: 0 }),
-		});
-		expect(res.status).toBe(400);
-		const data = await res.json<any>();
-		expect(data.errors[0].message).toMatch(/non-empty/);
-	});
-
-	it('bulk-revoke rejects over 100 items', async () => {
-		const ids = Array.from({ length: 101 }, (_, i) => `upt_${String(i).padStart(24, '0')}`);
-		const res = await SELF.fetch('http://localhost/admin/upstream-tokens/bulk-revoke', {
-			method: 'POST',
-			headers: adminHeaders(),
-			body: JSON.stringify({ ids, confirm_count: 101 }),
-		});
-		expect(res.status).toBe(400);
-		const data = await res.json<any>();
-		expect(data.errors[0].message).toMatch(/100/);
-	});
-});
-
 describe('Upstream tokens — bulk delete', () => {
 	it('bulk-delete mix of existing and not-found', async () => {
 		const c1 = await SELF.fetch('http://localhost/admin/upstream-tokens', {
@@ -425,6 +283,40 @@ describe('Upstream tokens — bulk delete', () => {
 		// Token should still exist
 		const getRes = await SELF.fetch(`http://localhost/admin/upstream-tokens/${t1}`, { headers: adminHeaders() });
 		expect(getRes.status).toBe(200);
+	});
+
+	it('bulk-delete rejects confirm_count mismatch', async () => {
+		const res = await SELF.fetch('http://localhost/admin/upstream-tokens/bulk-delete', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({ ids: ['upt_a', 'upt_b'], confirm_count: 5 }),
+		});
+		expect(res.status).toBe(400);
+		const data = await res.json<any>();
+		expect(data.errors[0].message).toMatch(/confirm_count/);
+	});
+
+	it('bulk-delete rejects empty array', async () => {
+		const res = await SELF.fetch('http://localhost/admin/upstream-tokens/bulk-delete', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({ ids: [], confirm_count: 0 }),
+		});
+		expect(res.status).toBe(400);
+		const data = await res.json<any>();
+		expect(data.errors[0].message).toMatch(/non-empty/);
+	});
+
+	it('bulk-delete rejects over 100 items', async () => {
+		const ids = Array.from({ length: 101 }, (_, i) => `upt_${String(i).padStart(24, '0')}`);
+		const res = await SELF.fetch('http://localhost/admin/upstream-tokens/bulk-delete', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({ ids, confirm_count: 101 }),
+		});
+		expect(res.status).toBe(400);
+		const data = await res.json<any>();
+		expect(data.errors[0].message).toMatch(/100/);
 	});
 });
 

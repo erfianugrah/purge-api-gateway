@@ -416,24 +416,16 @@ export class Gatekeeper extends DurableObject<Env> {
 		return this.upstreamTokens.createToken(req);
 	}
 
-	async listUpstreamTokens(filter?: 'active' | 'revoked'): Promise<UpstreamToken[]> {
-		return this.upstreamTokens.listTokens(filter);
+	async listUpstreamTokens(): Promise<UpstreamToken[]> {
+		return this.upstreamTokens.listTokens();
 	}
 
 	async getUpstreamToken(id: string): Promise<{ token: UpstreamToken } | null> {
 		return this.upstreamTokens.getToken(id);
 	}
 
-	async revokeUpstreamToken(id: string): Promise<boolean> {
-		return this.upstreamTokens.revokeToken(id);
-	}
-
 	async deleteUpstreamToken(id: string): Promise<boolean> {
 		return this.upstreamTokens.deleteToken(id);
-	}
-
-	async bulkRevokeUpstreamTokens(ids: string[]): Promise<BulkResult> {
-		return this.upstreamTokens.bulkRevoke(ids);
 	}
 
 	async bulkDeleteUpstreamTokens(ids: string[]): Promise<BulkResult> {
@@ -455,24 +447,16 @@ export class Gatekeeper extends DurableObject<Env> {
 		return this.upstreamR2.createEndpoint(req);
 	}
 
-	async listUpstreamR2(filter?: 'active' | 'revoked'): Promise<UpstreamR2[]> {
-		return this.upstreamR2.listEndpoints(filter);
+	async listUpstreamR2(): Promise<UpstreamR2[]> {
+		return this.upstreamR2.listEndpoints();
 	}
 
 	async getUpstreamR2(id: string): Promise<{ endpoint: UpstreamR2 } | null> {
 		return this.upstreamR2.getEndpoint(id);
 	}
 
-	async revokeUpstreamR2(id: string): Promise<boolean> {
-		return this.upstreamR2.revokeEndpoint(id);
-	}
-
 	async deleteUpstreamR2(id: string): Promise<boolean> {
 		return this.upstreamR2.deleteEndpoint(id);
-	}
-
-	async bulkRevokeUpstreamR2(ids: string[]): Promise<BulkResult> {
-		return this.upstreamR2.bulkRevoke(ids);
 	}
 
 	async bulkDeleteUpstreamR2(ids: string[]): Promise<BulkResult> {

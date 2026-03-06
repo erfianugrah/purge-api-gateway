@@ -588,7 +588,7 @@ components:
 
     UpstreamToken:
       type: object
-      required: [id, name, zone_ids, token_preview, created_at, revoked]
+      required: [id, name, zone_ids, token_preview, created_at]
       properties:
         id:
           type: string
@@ -608,9 +608,6 @@ components:
         created_by:
           type: ['string', 'null']
           description: Email of the creator (from Access JWT), or null.
-        revoked:
-          type: integer
-          enum: [0, 1]
 
     CreateUpstreamTokenRequest:
       type: object
@@ -635,7 +632,7 @@ components:
 
     UpstreamR2:
       type: object
-      required: [id, name, bucket_names, access_key_preview, endpoint, created_at, revoked]
+      required: [id, name, bucket_names, access_key_preview, endpoint, created_at]
       properties:
         id:
           type: string
@@ -658,9 +655,6 @@ components:
         created_by:
           type: ['string', 'null']
           description: Email of the creator (from Access JWT), or null.
-        revoked:
-          type: integer
-          enum: [0, 1]
 
     CreateUpstreamR2Request:
       type: object
@@ -1992,12 +1986,6 @@ paths:
       security:
         - CloudflareAccess: []
         - AdminKeyAuth: []
-      parameters:
-        - name: status
-          in: query
-          schema:
-            type: string
-            enum: [active, revoked]
       responses:
         '200':
           description: List of upstream tokens (token values redacted).
@@ -2064,8 +2052,9 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
 
     delete:
-      operationId: revokeUpstreamToken
-      summary: Revoke upstream token
+      operationId: deleteUpstreamToken
+      summary: Delete upstream token
+      description: Permanently removes the upstream token from the database.
       tags: [UpstreamTokens]
       security:
         - CloudflareAccess: []
@@ -2078,7 +2067,7 @@ paths:
             type: string
       responses:
         '200':
-          description: Token revoked.
+          description: Token deleted.
           content:
             application/json:
               schema:
@@ -2090,9 +2079,9 @@ paths:
                     const: true
                   result:
                     type: object
-                    required: [revoked]
+                    required: [deleted]
                     properties:
-                      revoked:
+                      deleted:
                         type: boolean
                         const: true
         '401':
@@ -2102,69 +2091,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Token not found or already revoked.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-
-  /admin/upstream-tokens/bulk-revoke:
-    post:
-      operationId: bulkRevokeUpstreamTokens
-      summary: Bulk soft-revoke multiple upstream tokens
-      description: >
-        Soft-revoke multiple upstream tokens in one request. Requires `confirm_count` to match
-        the number of IDs as a fat-finger guard. Set `dry_run: true` to preview without executing.
-      tags: [UpstreamTokens]
-      security:
-        - CloudflareAccess: []
-        - AdminKeyAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [ids, confirm_count]
-              properties:
-                ids:
-                  type: array
-                  items:
-                    type: string
-                  minItems: 1
-                  maxItems: 100
-                  description: Array of upstream token IDs to revoke.
-                confirm_count:
-                  type: integer
-                  description: Must exactly match the length of `ids`.
-                dry_run:
-                  type: boolean
-                  default: false
-                  description: Preview the operation without executing.
-      responses:
-        '200':
-          description: Bulk revoke result or dry-run preview.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [success, result]
-                properties:
-                  success:
-                    type: boolean
-                    const: true
-                  result:
-                    oneOf:
-                      - $ref: '#/components/schemas/BulkResult'
-                      - $ref: '#/components/schemas/BulkDryRunResult'
-        '400':
-          description: Validation error (empty array, confirm_count mismatch, over 100 items).
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '401':
-          description: Not authenticated.
+          description: Token not found.
           content:
             application/json:
               schema:
@@ -2286,12 +2213,6 @@ paths:
       security:
         - CloudflareAccess: []
         - AdminKeyAuth: []
-      parameters:
-        - name: status
-          in: query
-          schema:
-            type: string
-            enum: [active, revoked]
       responses:
         '200':
           description: List of R2 endpoints (secrets redacted).
@@ -2358,8 +2279,9 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
 
     delete:
-      operationId: revokeUpstreamR2
-      summary: Revoke upstream R2 endpoint
+      operationId: deleteUpstreamR2
+      summary: Delete upstream R2 endpoint
+      description: Permanently removes the upstream R2 endpoint from the database.
       tags: [UpstreamR2]
       security:
         - CloudflareAccess: []
@@ -2372,7 +2294,7 @@ paths:
             type: string
       responses:
         '200':
-          description: Endpoint revoked.
+          description: Endpoint deleted.
           content:
             application/json:
               schema:
@@ -2384,9 +2306,9 @@ paths:
                     const: true
                   result:
                     type: object
-                    required: [revoked]
+                    required: [deleted]
                     properties:
-                      revoked:
+                      deleted:
                         type: boolean
                         const: true
         '401':
@@ -2396,69 +2318,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Endpoint not found or already revoked.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-
-  /admin/upstream-r2/bulk-revoke:
-    post:
-      operationId: bulkRevokeUpstreamR2
-      summary: Bulk soft-revoke multiple upstream R2 endpoints
-      description: >
-        Soft-revoke multiple upstream R2 endpoints in one request. Requires `confirm_count` to match
-        the number of IDs as a fat-finger guard. Set `dry_run: true` to preview without executing.
-      tags: [UpstreamR2]
-      security:
-        - CloudflareAccess: []
-        - AdminKeyAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [ids, confirm_count]
-              properties:
-                ids:
-                  type: array
-                  items:
-                    type: string
-                  minItems: 1
-                  maxItems: 100
-                  description: Array of upstream R2 endpoint IDs to revoke.
-                confirm_count:
-                  type: integer
-                  description: Must exactly match the length of `ids`.
-                dry_run:
-                  type: boolean
-                  default: false
-                  description: Preview the operation without executing.
-      responses:
-        '200':
-          description: Bulk revoke result or dry-run preview.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [success, result]
-                properties:
-                  success:
-                    type: boolean
-                    const: true
-                  result:
-                    oneOf:
-                      - $ref: '#/components/schemas/BulkResult'
-                      - $ref: '#/components/schemas/BulkDryRunResult'
-        '400':
-          description: Validation error (empty array, confirm_count mismatch, over 100 items).
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '401':
-          description: Not authenticated.
+          description: Endpoint not found.
           content:
             application/json:
               schema:

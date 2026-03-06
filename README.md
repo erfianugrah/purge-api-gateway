@@ -172,7 +172,7 @@ Token/secret values are write-only — they can't be retrieved after registratio
 npm run dev              # wrangler dev (local)
 npm run build            # build dashboard + CLI
 npm run deploy           # build dashboard, then wrangler deploy
-npm test                 # run all tests (569 across worker + CLI)
+npm test                 # run all tests (561 across worker + CLI)
 npm run test:worker      # worker tests only
 npm run test:cli         # CLI tests only
 npx wrangler types       # regenerate types after changing wrangler.jsonc
@@ -985,15 +985,27 @@ Returns `total_requests`, `by_status`, `by_operation` (top 20), `by_bucket` (top
 
 When a purge request arrives, the gateway looks up the best matching upstream token for the target zone: exact match first, then wildcard. If no upstream token matches, the request fails with 502.
 
-#### `GET /admin/upstream-tokens[?status=active|revoked]` — list upstream tokens
+#### `GET /admin/upstream-tokens` — list upstream tokens
 
 Returns all registered upstream tokens. The actual token value is never included — only the preview, zone scope, and metadata.
 
 #### `GET /admin/upstream-tokens/:id` — get upstream token details
 
-#### `DELETE /admin/upstream-tokens/:id` — revoke upstream token
+#### `DELETE /admin/upstream-tokens/:id` — delete upstream token
 
-Soft revoke. Takes effect immediately (up to 60s cache TTL). If you revoke all upstream tokens for a zone, purge requests to that zone will start returning 502.
+Hard delete. Removes the token row entirely. If you delete all upstream tokens for a zone, purge requests to that zone will start returning 502.
+
+#### `POST /admin/upstream-tokens/bulk-delete` — bulk delete upstream tokens
+
+Same semantics as key bulk operations. Request body:
+
+```json
+{
+	"ids": ["upt_abc123...", "upt_def456..."],
+	"confirm_count": 2,
+	"dry_run": false
+}
+```
 
 #### `POST /admin/upstream-r2` — register upstream R2 endpoint
 
@@ -1011,15 +1023,27 @@ Soft revoke. Takes effect immediately (up to 60s cache TTL). If you revoke all u
 
 When an S3 request arrives, the gateway resolves the R2 endpoint for the target bucket: exact match first, then wildcard. For `ListBuckets` (no specific bucket), the first wildcard endpoint is used. If no endpoint matches, the request fails with 502.
 
-#### `GET /admin/upstream-r2[?status=active|revoked]` — list R2 endpoints
+#### `GET /admin/upstream-r2` — list R2 endpoints
 
 Returns all registered R2 endpoints with secrets redacted (preview only).
 
 #### `GET /admin/upstream-r2/:id` — get R2 endpoint details
 
-#### `DELETE /admin/upstream-r2/:id` — revoke R2 endpoint
+#### `DELETE /admin/upstream-r2/:id` — delete R2 endpoint
 
-Soft revoke. Immediately stops forwarding S3 requests to this endpoint (up to 60s cache TTL).
+Hard delete. Removes the endpoint row entirely. If you delete all R2 endpoints for a bucket, S3 requests to that bucket will start returning 502.
+
+#### `POST /admin/upstream-r2/bulk-delete` — bulk delete R2 endpoints
+
+Same semantics as key bulk operations. Request body:
+
+```json
+{
+	"ids": ["upr2_abc123...", "upr2_def456..."],
+	"confirm_count": 2,
+	"dry_run": false
+}
+```
 
 #### `GET /admin/config` — get gateway configuration
 
@@ -1047,7 +1071,7 @@ Deletes the override for a single key, reverting it to the hardcoded default. Re
 
 ### OpenAPI specification
 
-The OpenAPI 3.1 spec (`openapi.yaml`) documents all gateway endpoints across 7 tags (System, Purge, Keys, Analytics, S3Credentials, S3Analytics, S3Proxy) with four security schemes: `ApiKeyAuth` (bearer), `AdminKeyAuth` (X-Admin-Key header), `CloudflareAccess` (Cf-Access-Jwt-Assertion header), and `S3SigV4Auth` (AWS Sig V4).
+The OpenAPI 3.1 spec (`openapi.yaml`) documents all gateway endpoints across 9 tags (System, Purge, Keys, Analytics, S3Credentials, S3Analytics, S3Proxy, UpstreamTokens, UpstreamR2) with four security schemes: `ApiKeyAuth` (bearer), `AdminKeyAuth` (X-Admin-Key header), `CloudflareAccess` (Cf-Access-Jwt-Assertion header), and `S3SigV4Auth` (AWS Sig V4).
 
 Decisions:
 
@@ -1270,8 +1294,8 @@ Fixed sidebar + header shell:
 | `/dashboard`                 | Summary stat cards (total requests, by-status, collapsed %, avg latency). Traffic timeline chart (Recharts area). Purge type distribution (donut). Top zones bar chart. Recent events feed. Time range selector.                                                                                                                                  |
 | `/dashboard/keys`            | Purge key list table with status filter tabs (All/Active/Revoked), text search (name, ID, zone, created_by), sortable columns, and client-side pagination. Create key dialog (responsive, scales to 1440p+) with visual policy builder. Revoke with confirmation.                                                                                 |
 | `/dashboard/s3-credentials`  | S3 credential list table with status filter tabs, client-side pagination, and per-statement policy preview (ALLOW/DENY badges with human-readable summaries, toggleable JSON). Create dialog (responsive, scales to 1440p+) with S3 policy builder and AWS IAM import. Shows access key ID and secret once on creation. Revoke with confirmation. |
-| `/dashboard/upstream-tokens` | Upstream CF API token list with client-side pagination. Register new tokens with name, token value, and zone scope. Token preview (first 4 + last 4 chars). Revoke with confirmation.                                                                                                                                                             |
-| `/dashboard/upstream-r2`     | Upstream R2 endpoint list with client-side pagination. Register with name, access key, secret, endpoint URL, and bucket scope. Access key preview. Revoke with confirmation.                                                                                                                                                                      |
+| `/dashboard/upstream-tokens` | Upstream CF API token list with client-side pagination. Register new tokens with name, token value, and zone scope. Token preview (first 4 + last 4 chars). Delete with confirmation. Bulk delete with confirm count guard.                                                                                                                       |
+| `/dashboard/upstream-r2`     | Upstream R2 endpoint list with client-side pagination. Register with name, access key, secret, endpoint URL, and bucket scope. Access key preview. Delete with confirmation. Bulk delete with confirm count guard.                                                                                                                                |
 | `/dashboard/analytics`       | Unified event log (purge + S3) with source tabs, status filter (Any/2xx/4xx/5xx), full-text search, sortable columns (Time, Source, Status, Duration), and client-side pagination over flight groups. Expandable detail rows with syntax-highlighted fields. Export to JSON / copy to clipboard.                                                  |
 | `/dashboard/purge`           | Manual purge form: select type (URL/host/tag/prefix/everything), enter values, zone picker, submit. Live rate limit status display.                                                                                                                                                                                                               |
 | `/dashboard/settings`        | Config registry editor. Shows all 8 keys grouped by section. Each row: current value, default, source (Override/Default), last updated by whom. Inline edit, save, and reset-to-default.                                                                                                                                                          |
@@ -1347,9 +1371,10 @@ npm run cli -- s3-credentials bulk-delete --ids GKa,GKb --confirm
 # Upstream CF API tokens (for purge)
 npm run cli -- upstream-tokens create --name prod-purge --token <cf-api-token> --zone-ids "<zone-id>"
 npm run cli -- upstream-tokens create --name wildcard --token <cf-api-token> --zone-ids "*"
-npm run cli -- upstream-tokens list [--active-only]
+npm run cli -- upstream-tokens list
 npm run cli -- upstream-tokens get --token-id upt_...
-npm run cli -- upstream-tokens revoke --token-id upt_... [-f]
+npm run cli -- upstream-tokens delete --token-id upt_... [-f]
+npm run cli -- upstream-tokens bulk-delete --ids upt_a,upt_b --confirm
 
 # Upstream R2 endpoints (for S3 proxy)
 npm run cli -- upstream-r2 create \
@@ -1358,9 +1383,10 @@ npm run cli -- upstream-r2 create \
   --secret-access-key <r2-secret> \
   --r2-endpoint "https://<account>.r2.cloudflarestorage.com" \
   --bucket-names "*"
-npm run cli -- upstream-r2 list [--active-only]
+npm run cli -- upstream-r2 list
 npm run cli -- upstream-r2 get --endpoint-id upr2_...
-npm run cli -- upstream-r2 revoke --endpoint-id upr2_... [-f]
+npm run cli -- upstream-r2 delete --endpoint-id upr2_... [-f]
+npm run cli -- upstream-r2 bulk-delete --ids upr2_a,upr2_b --confirm
 
 # Config registry
 npm run cli -- config get                              # show full config with source info
@@ -1374,7 +1400,7 @@ Config via env vars (`GATEKEEPER_URL`, `GATEKEEPER_ADMIN_KEY`, `GATEKEEPER_API_K
 
 ## Tests
 
-569 tests across 29 test files (553 worker + 16 CLI):
+561 tests across 29 test files (545 worker + 16 CLI):
 
 ```bash
 npm test              # all (vitest workspace: worker + CLI)
@@ -1409,8 +1435,8 @@ npm run smoke         # E2E smoke tests against a live instance (via tsx)
 | `test/admin.test.ts`                    | 22    | Admin auth, key lifecycle, hard-delete, bulk revoke/delete                        |
 | `test/security-headers.test.ts`         | 12    | Security headers on every route type, no functional interference                  |
 | `test/analytics.test.ts`                | 9     | D1 event logging, filtering, summary                                              |
-| `test/upstream-tokens.test.ts`          | 15    | Upstream token CRUD lifecycle, validation, auth, created_by                       |
-| `test/upstream-r2.test.ts`              | 14    | Upstream R2 endpoint CRUD lifecycle, validation, auth                             |
+| `test/upstream-tokens.test.ts`          | 20    | Upstream token CRUD lifecycle, bulk delete, validation, auth, created_by          |
+| `test/upstream-r2.test.ts`              | 19    | Upstream R2 endpoint CRUD lifecycle, bulk delete, validation, auth                |
 | `test/s3-analytics.test.ts`             | 10    | S3 analytics events/summary, D1 logging, credential filtering                     |
 | `test/s3-xml.test.ts`                   | 31    | XML escaping, entity decoding, DeleteObjects parsing, S3 error responses          |
 | `cli/cli.test.ts`                       | 16    | Policy parsing, config resolution                                                 |
@@ -1494,10 +1520,10 @@ cli/
     purge.ts                         gk purge {hosts,tags,prefixes,urls,everything}
     analytics.ts                     gk analytics {events,summary}
     s3-credentials.ts                gk s3-credentials {create,list,get,revoke,bulk-revoke,bulk-delete}
-    upstream-tokens.ts               gk upstream-tokens {create,list,get,revoke,bulk-revoke,bulk-delete}
-    upstream-r2.ts                   gk upstream-r2 {create,list,get,revoke,bulk-revoke,bulk-delete}
+    upstream-tokens.ts               gk upstream-tokens {create,list,get,delete,bulk-delete}
+    upstream-r2.ts                   gk upstream-r2 {create,list,get,delete,bulk-delete}
     config.ts                        gk config {get,set,reset}
-test/                                29 test files (569 tests)
+test/                                29 test files (561 tests)
   helpers.ts                         Test factories, upstream token registration, mock helpers
   s3-helpers.ts                      R2 upstream registration, test constants
   policy-helpers.ts                  Shared policy test helpers (makePolicy, allowStmt, denyStmt, makeCtx)

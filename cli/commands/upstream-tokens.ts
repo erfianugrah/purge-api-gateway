@@ -1,22 +1,6 @@
 import { defineCommand } from 'citty';
 import { resolveConfig, request, assertOk } from '../client.js';
-import {
-	success,
-	info,
-	warn,
-	error,
-	bold,
-	dim,
-	cyan,
-	green,
-	red,
-	yellow,
-	table,
-	label,
-	printJson,
-	formatDuration,
-	symbols,
-} from '../ui.js';
+import { success, info, warn, error, bold, dim, cyan, green, red, yellow, table, label, printJson, formatDuration } from '../ui.js';
 
 /** Shared args across upstream-tokens commands. */
 const globalArgs = {
@@ -104,16 +88,11 @@ const list = defineCommand({
 	meta: { name: 'list', description: 'List all registered upstream tokens' },
 	args: {
 		...globalArgs,
-		'active-only': {
-			type: 'boolean',
-			description: 'Only show active (non-revoked) tokens',
-		},
 	},
 	async run({ args }) {
 		const config = resolveConfig(args);
 
-		const statusFilter = args['active-only'] ? '?status=active' : '';
-		const { status, data, durationMs } = await request(config, 'GET', `/admin/upstream-tokens${statusFilter}`, {
+		const { status, data, durationMs } = await request(config, 'GET', '/admin/upstream-tokens', {
 			auth: 'admin',
 			label: 'Fetching upstream tokens...',
 		});
@@ -137,14 +116,13 @@ const list = defineCommand({
 		console.error('');
 
 		const rows = result.map((t) => {
-			const statusLabel = (t.revoked as number) === 1 ? red('revoked') : green('active');
 			const created = new Date(t.created_at as number).toISOString().slice(0, 19).replace('T', ' ');
 			const zones = t.zone_ids as string;
 
-			return [cyan(t.id as string), t.name as string, zones, statusLabel, created];
+			return [cyan(t.id as string), t.name as string, zones, created];
 		});
 
-		table(['ID', 'Name', 'Zone IDs', 'Status', 'Created'], rows);
+		table(['ID', 'Name', 'Zone IDs', 'Created'], rows);
 		console.error('');
 	},
 });
@@ -183,14 +161,14 @@ const get = defineCommand({
 	},
 });
 
-// --- upstream-tokens revoke ---
-const revoke = defineCommand({
-	meta: { name: 'revoke', description: 'Revoke an upstream token (irreversible)' },
+// --- upstream-tokens delete ---
+const del = defineCommand({
+	meta: { name: 'delete', description: 'Delete an upstream token (permanent, irreversible)' },
 	args: {
 		...globalArgs,
 		id: {
 			type: 'string',
-			description: 'The upstream token ID to revoke (upt_...)',
+			description: 'The upstream token ID to delete (upt_...)',
 			required: true,
 		},
 		force: {
@@ -204,7 +182,7 @@ const revoke = defineCommand({
 		const tokenId = args.id;
 
 		if (!args.force && process.stdin.isTTY) {
-			warn(`You are about to revoke upstream token ${bold(tokenId)}. This cannot be undone.`);
+			warn(`You are about to delete upstream token ${bold(tokenId)}. This cannot be undone.`);
 			process.stderr.write(`  Continue? [y/N] `);
 
 			const confirmed = await new Promise<boolean>((resolve) => {
@@ -227,7 +205,7 @@ const revoke = defineCommand({
 
 		const { status, data, durationMs } = await request(config, 'DELETE', `/admin/upstream-tokens/${encodeURIComponent(tokenId)}`, {
 			auth: 'admin',
-			label: 'Revoking upstream token...',
+			label: 'Deleting upstream token...',
 		});
 
 		if (args.json) {
@@ -238,78 +216,7 @@ const revoke = defineCommand({
 
 		assertOk(status, data);
 		console.error('');
-		success(`Upstream token ${bold(tokenId)} revoked ${dim(`(${formatDuration(durationMs)})`)}`);
-		console.error('');
-	},
-});
-
-// --- upstream-tokens bulk-revoke ---
-const bulkRevoke = defineCommand({
-	meta: { name: 'bulk-revoke', description: 'Bulk soft-revoke multiple upstream tokens' },
-	args: {
-		...globalArgs,
-		ids: {
-			type: 'string',
-			description: 'Comma-separated list of token IDs (upt_...)',
-			required: true,
-		},
-		confirm: {
-			type: 'boolean',
-			description: 'Execute the operation (without this flag, runs in dry-run mode)',
-		},
-	},
-	async run({ args }) {
-		const config = resolveConfig(args);
-		const ids = args.ids
-			.split(',')
-			.map((s: string) => s.trim())
-			.filter(Boolean);
-
-		if (ids.length === 0) {
-			error('No token IDs provided');
-			process.exit(1);
-		}
-
-		const body: Record<string, unknown> = {
-			ids,
-			confirm_count: ids.length,
-			dry_run: !args.confirm,
-		};
-
-		const { status, data, durationMs } = await request(config, 'POST', '/admin/upstream-tokens/bulk-revoke', {
-			body,
-			auth: 'admin',
-			label: args.confirm ? 'Bulk revoking upstream tokens...' : 'Previewing bulk revoke (dry run)...',
-		});
-
-		if (args.json) {
-			assertOk(status, data);
-			printJson(data);
-			return;
-		}
-
-		assertOk(status, data);
-		const result = (data as Record<string, unknown>).result as Record<string, unknown>;
-
-		console.error('');
-		if (result.dry_run) {
-			warn(`Dry run — no changes made ${dim(`(${formatDuration(durationMs)})`)}`);
-			console.error('');
-			const items = result.items as { id: string; current_status: string; would_become: string }[];
-			const rows = items.map((i) => [cyan(i.id), i.current_status, yellow(i.would_become)]);
-			table(['ID', 'Current Status', 'Would Become'], rows);
-			console.error('');
-			info(`Re-run with ${bold('--confirm')} to execute.`);
-		} else {
-			success(`Bulk revoke complete ${dim(`(${formatDuration(durationMs)})`)}`);
-			console.error('');
-			const results = result.results as { id: string; status: string }[];
-			const rows = results.map((r) => {
-				const statusLabel = r.status === 'revoked' ? green(r.status) : r.status === 'not_found' ? red(r.status) : yellow(r.status);
-				return [cyan(r.id), statusLabel];
-			});
-			table(['ID', 'Status'], rows);
-		}
+		success(`Upstream token ${bold(tokenId)} deleted ${dim(`(${formatDuration(durationMs)})`)}`);
 		console.error('');
 	},
 });
@@ -388,13 +295,10 @@ const bulkDelete = defineCommand({
 // --- Formatting helper ---
 
 function formatUpstreamToken(token: Record<string, unknown>): void {
-	const status = (token.revoked as number) === 1 ? red('revoked') : green('active');
-
 	label('ID', bold(token.id as string));
 	label('Name', token.name as string);
 	label('Token preview', dim(token.token_preview as string));
 	label('Zone IDs', token.zone_ids as string);
-	label('Status', status);
 	label('Created', new Date(token.created_at as number).toISOString());
 	if (token.created_by) {
 		label('Created by', token.created_by as string);
@@ -404,5 +308,5 @@ function formatUpstreamToken(token: Record<string, unknown>): void {
 // --- upstream-tokens (parent) ---
 export default defineCommand({
 	meta: { name: 'upstream-tokens', description: 'Manage upstream Cloudflare API tokens for purge' },
-	subCommands: { create, list, get, revoke, 'bulk-revoke': bulkRevoke, 'bulk-delete': bulkDelete },
+	subCommands: { create, list, get, delete: del, 'bulk-delete': bulkDelete },
 });

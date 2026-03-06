@@ -90,17 +90,12 @@ adminUpstreamR2App.post('/', async (c) => {
 // ─── List ───────────────────────────────────────────────────────────────────
 
 adminUpstreamR2App.get('/', async (c) => {
-	const statusFilter = c.req.query('status') as 'active' | 'revoked' | undefined;
-	const validFilters = ['active', 'revoked'];
-	const filter = statusFilter && validFilters.includes(statusFilter) ? statusFilter : undefined;
-
 	const stub = getStub(c.env);
-	const endpoints = await stub.listUpstreamR2(filter);
+	const endpoints = await stub.listUpstreamR2();
 
 	console.log(
 		JSON.stringify({
 			route: 'admin.listUpstreamR2',
-			filter: filter ?? 'all',
 			count: endpoints.length,
 			ts: new Date().toISOString(),
 		}),
@@ -123,80 +118,32 @@ adminUpstreamR2App.get('/:id', async (c) => {
 	return c.json({ success: true, result: result.endpoint });
 });
 
-// ─── Revoke / delete ────────────────────────────────────────────────────────
+// ─── Delete ─────────────────────────────────────────────────────────────────
 
 adminUpstreamR2App.delete('/:id', async (c) => {
 	const id = c.req.param('id');
-	const permanent = c.req.query('permanent') === 'true';
 	const stub = getStub(c.env);
-
-	if (permanent) {
-		const deleted = await stub.deleteUpstreamR2(id);
-
-		console.log(
-			JSON.stringify({
-				route: 'admin.deleteUpstreamR2',
-				endpointId: id,
-				deleted,
-				ts: new Date().toISOString(),
-			}),
-		);
-
-		if (!deleted) {
-			return c.json({ success: false, errors: [{ code: 404, message: 'Upstream R2 endpoint not found' }] }, 404);
-		}
-
-		return c.json({ success: true, result: { deleted: true } });
-	}
-
-	const revoked = await stub.revokeUpstreamR2(id);
+	const deleted = await stub.deleteUpstreamR2(id);
 
 	console.log(
 		JSON.stringify({
-			route: 'admin.revokeUpstreamR2',
+			route: 'admin.deleteUpstreamR2',
 			endpointId: id,
-			revoked,
+			deleted,
 			ts: new Date().toISOString(),
 		}),
 	);
 
-	if (!revoked) {
-		return c.json({ success: false, errors: [{ code: 404, message: 'Upstream R2 endpoint not found or already revoked' }] }, 404);
+	if (!deleted) {
+		return c.json({ success: false, errors: [{ code: 404, message: 'Upstream R2 endpoint not found' }] }, 404);
 	}
 
-	return c.json({ success: true, result: { revoked: true } });
-});
-
-// ─── Bulk revoke ────────────────────────────────────────────────────────────
-
-const MAX_BULK_ITEMS = 100;
-
-adminUpstreamR2App.post('/bulk-revoke', async (c) => {
-	const log: Record<string, unknown> = { route: 'admin.bulkRevokeUpstreamR2', ts: new Date().toISOString() };
-
-	const body = await parseBulkBody(c);
-	if (body instanceof Response) return body;
-
-	const { ids, dryRun } = body;
-	const stub = getStub(c.env);
-
-	if (dryRun) {
-		const preview = await stub.bulkInspectUpstreamR2(ids, 'revoked');
-		log.status = 200;
-		log.dryRun = true;
-		log.count = ids.length;
-		console.log(JSON.stringify(log));
-		return c.json({ success: true, result: preview });
-	}
-
-	const result = await stub.bulkRevokeUpstreamR2(ids);
-	log.status = 200;
-	log.processed = result.processed;
-	console.log(JSON.stringify(log));
-	return c.json({ success: true, result });
+	return c.json({ success: true, result: { deleted: true } });
 });
 
 // ─── Bulk delete ────────────────────────────────────────────────────────────
+
+const MAX_BULK_ITEMS = 100;
 
 adminUpstreamR2App.post('/bulk-delete', async (c) => {
 	const log: Record<string, unknown> = { route: 'admin.bulkDeleteUpstreamR2', ts: new Date().toISOString() };

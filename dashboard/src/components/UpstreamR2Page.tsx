@@ -1,23 +1,15 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Plus, ShieldOff, Trash2, Loader2, Copy, Check } from 'lucide-react';
+import { Plus, Trash2, Loader2, Copy, Check } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePagination } from '@/hooks/use-pagination';
 import { TablePagination } from '@/components/TablePagination';
-import {
-	listUpstreamR2,
-	createUpstreamR2,
-	revokeUpstreamR2,
-	bulkRevokeUpstreamR2Endpoints,
-	bulkDeleteUpstreamR2Endpoints,
-} from '@/lib/api';
+import { listUpstreamR2, createUpstreamR2, deleteUpstreamR2, bulkDeleteUpstreamR2Endpoints } from '@/lib/api';
 import type { UpstreamR2 } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { T } from '@/lib/typography';
@@ -214,8 +206,7 @@ export function UpstreamR2Page() {
 	const [endpoints, setEndpoints] = useState<UpstreamR2[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
-	const [revokingId, setRevokingId] = useState<string | null>(null);
-	const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'revoked'>('all');
+	const [deletingId, setDeletingId] = useState<string | null>(null);
 	const [copiedId, setCopiedId] = useState<string | null>(null);
 	const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 	const [bulkLoading, setBulkLoading] = useState(false);
@@ -224,8 +215,7 @@ export function UpstreamR2Page() {
 		setLoading(true);
 		setError(null);
 		try {
-			const filter = statusFilter === 'all' ? undefined : statusFilter;
-			const data = await listUpstreamR2(filter);
+			const data = await listUpstreamR2();
 			setEndpoints(data);
 		} catch (e: any) {
 			setError(e.message ?? 'Failed to load R2 endpoints');
@@ -233,22 +223,22 @@ export function UpstreamR2Page() {
 		} finally {
 			setLoading(false);
 		}
-	}, [statusFilter]);
+	}, []);
 
 	useEffect(() => {
 		fetchEndpoints();
 	}, [fetchEndpoints]);
 
-	const handleRevoke = async (id: string) => {
-		if (!confirm(`Revoke R2 endpoint ${truncateId(id)}? This cannot be undone.`)) return;
-		setRevokingId(id);
+	const handleDelete = async (id: string) => {
+		if (!confirm(`Delete R2 endpoint ${truncateId(id)}? This cannot be undone.`)) return;
+		setDeletingId(id);
 		try {
-			await revokeUpstreamR2(id);
+			await deleteUpstreamR2(id);
 			await fetchEndpoints();
 		} catch (e: any) {
-			setError(e.message ?? 'Failed to revoke endpoint');
+			setError(e.message ?? 'Failed to delete endpoint');
 		} finally {
-			setRevokingId(null);
+			setDeletingId(null);
 		}
 	};
 
@@ -275,31 +265,13 @@ export function UpstreamR2Page() {
 		}
 	};
 
-	const handleBulkRevoke = async () => {
-		const ids = [...selectedIds];
-		const activeIds = ids.filter((id) => endpoints.find((ep) => ep.id === id && !ep.revoked));
-		if (activeIds.length === 0) return;
-		if (!confirm(`Bulk revoke ${activeIds.length} endpoint${activeIds.length > 1 ? 's' : ''}? This cannot be undone.`)) return;
-		setBulkLoading(true);
-		try {
-			await bulkRevokeUpstreamR2Endpoints(activeIds);
-			setSelectedIds(new Set());
-			await fetchEndpoints();
-		} catch (e: any) {
-			setError(e.message ?? 'Bulk revoke failed');
-		} finally {
-			setBulkLoading(false);
-		}
-	};
-
 	const handleBulkDelete = async () => {
 		const ids = [...selectedIds];
-		const revokedIds = ids.filter((id) => endpoints.find((ep) => ep.id === id && ep.revoked));
-		if (revokedIds.length === 0) return;
-		if (!confirm(`Permanently delete ${revokedIds.length} endpoint${revokedIds.length > 1 ? 's' : ''}? This cannot be undone.`)) return;
+		if (ids.length === 0) return;
+		if (!confirm(`Permanently delete ${ids.length} endpoint${ids.length > 1 ? 's' : ''}? This cannot be undone.`)) return;
 		setBulkLoading(true);
 		try {
-			await bulkDeleteUpstreamR2Endpoints(revokedIds);
+			await bulkDeleteUpstreamR2Endpoints(ids);
 			setSelectedIds(new Set());
 			await fetchEndpoints();
 		} catch (e: any) {
@@ -308,12 +280,6 @@ export function UpstreamR2Page() {
 			setBulkLoading(false);
 		}
 	};
-
-	const selectedActiveCount = [...selectedIds].filter((id) => endpoints.find((ep) => ep.id === id && !ep.revoked)).length;
-	const selectedRevokedCount = [...selectedIds].filter((id) => endpoints.find((ep) => ep.id === id && ep.revoked)).length;
-
-	const activeCount = endpoints.filter((e) => !e.revoked).length;
-	const revokedCount = endpoints.filter((e) => e.revoked).length;
 
 	const { pageItems, page, pageSize, totalItems, totalPages, pageSizeOptions, setPage, setPageSize } = usePagination(endpoints);
 
@@ -333,44 +299,15 @@ export function UpstreamR2Page() {
 			{/* ── Error ──────────────────────────────────────────── */}
 			{error && <div className="rounded-lg border border-lv-red/30 bg-lv-red/10 px-4 py-3 text-sm text-lv-red">{error}</div>}
 
-			{/* ── Filter tabs ────────────────────────────────────── */}
-			<Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as 'all' | 'active' | 'revoked')}>
-				<TabsList>
-					<TabsTrigger value="all">All ({endpoints.length})</TabsTrigger>
-					<TabsTrigger value="active">Active ({activeCount})</TabsTrigger>
-					<TabsTrigger value="revoked">Revoked ({revokedCount})</TabsTrigger>
-				</TabsList>
-			</Tabs>
-
 			{/* ── Bulk actions bar ────────────────────────────────── */}
 			{selectedIds.size > 0 && (
 				<div className="flex items-center gap-3 rounded-lg border border-lv-purple/30 bg-lv-purple/10 px-4 py-2">
 					<span className="text-sm font-data text-lv-purple">{selectedIds.size} selected</span>
 					<div className="ml-auto flex gap-2">
-						{selectedActiveCount > 0 && (
-							<Button
-								size="sm"
-								variant="outline"
-								className="text-lv-red border-lv-red/30"
-								onClick={handleBulkRevoke}
-								disabled={bulkLoading}
-							>
-								{bulkLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldOff className="h-3.5 w-3.5" />}
-								Revoke ({selectedActiveCount})
-							</Button>
-						)}
-						{selectedRevokedCount > 0 && (
-							<Button
-								size="sm"
-								variant="outline"
-								className="text-lv-red border-lv-red/30"
-								onClick={handleBulkDelete}
-								disabled={bulkLoading}
-							>
-								{bulkLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-								Delete ({selectedRevokedCount})
-							</Button>
-						)}
+						<Button size="sm" variant="outline" className="text-lv-red border-lv-red/30" onClick={handleBulkDelete} disabled={bulkLoading}>
+							{bulkLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+							Delete ({selectedIds.size})
+						</Button>
 						<Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
 							Clear
 						</Button>
@@ -411,7 +348,6 @@ export function UpstreamR2Page() {
 									<TableHead className={T.sectionLabel}>Endpoint</TableHead>
 									<TableHead className={T.sectionLabel}>Key</TableHead>
 									<TableHead className={T.sectionLabel}>Buckets</TableHead>
-									<TableHead className={T.sectionLabel}>Status</TableHead>
 									<TableHead className={T.sectionLabel}>Created</TableHead>
 									<TableHead className={T.sectionLabel}>Created By</TableHead>
 									<TableHead className={cn(T.sectionLabel, 'text-right')}>Actions</TableHead>
@@ -455,28 +391,19 @@ export function UpstreamR2Page() {
 										<TableCell className={T.tableCell}>
 											<span title={ep.bucket_names}>{formatBuckets(ep.bucket_names)}</span>
 										</TableCell>
-										<TableCell>
-											{ep.revoked ? (
-												<Badge className="bg-lv-red/20 text-lv-red border-lv-red/30">Revoked</Badge>
-											) : (
-												<Badge className="bg-lv-green/20 text-lv-green border-lv-green/30">Active</Badge>
-											)}
-										</TableCell>
 										<TableCell className={T.tableCell}>{formatDate(ep.created_at)}</TableCell>
 										<TableCell className={T.tableCell}>{ep.created_by ?? <span className={T.muted}>--</span>}</TableCell>
 										<TableCell className="text-right">
-											{!ep.revoked && (
-												<Button
-													size="xs"
-													variant="ghost"
-													className="text-lv-red hover:text-lv-red-bright hover:bg-lv-red/10"
-													onClick={() => handleRevoke(ep.id)}
-													disabled={revokingId === ep.id}
-												>
-													{revokingId === ep.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldOff className="h-3.5 w-3.5" />}
-													Revoke
-												</Button>
-											)}
+											<Button
+												size="xs"
+												variant="ghost"
+												className="text-lv-red hover:text-lv-red-bright hover:bg-lv-red/10"
+												onClick={() => handleDelete(ep.id)}
+												disabled={deletingId === ep.id}
+											>
+												{deletingId === ep.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+												Delete
+											</Button>
 										</TableCell>
 									</TableRow>
 								))}

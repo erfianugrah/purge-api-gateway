@@ -63,17 +63,12 @@ adminUpstreamTokensApp.post('/', async (c) => {
 // ─── List ───────────────────────────────────────────────────────────────────
 
 adminUpstreamTokensApp.get('/', async (c) => {
-	const statusFilter = c.req.query('status') as 'active' | 'revoked' | undefined;
-	const validFilters = ['active', 'revoked'];
-	const filter = statusFilter && validFilters.includes(statusFilter) ? statusFilter : undefined;
-
 	const stub = getStub(c.env);
-	const tokens = await stub.listUpstreamTokens(filter);
+	const tokens = await stub.listUpstreamTokens();
 
 	console.log(
 		JSON.stringify({
 			route: 'admin.listUpstreamTokens',
-			filter: filter ?? 'all',
 			count: tokens.length,
 			ts: new Date().toISOString(),
 		}),
@@ -96,80 +91,32 @@ adminUpstreamTokensApp.get('/:id', async (c) => {
 	return c.json({ success: true, result: result.token });
 });
 
-// ─── Revoke / delete ────────────────────────────────────────────────────────
+// ─── Delete ─────────────────────────────────────────────────────────────────
 
 adminUpstreamTokensApp.delete('/:id', async (c) => {
 	const id = c.req.param('id');
-	const permanent = c.req.query('permanent') === 'true';
 	const stub = getStub(c.env);
-
-	if (permanent) {
-		const deleted = await stub.deleteUpstreamToken(id);
-
-		console.log(
-			JSON.stringify({
-				route: 'admin.deleteUpstreamToken',
-				tokenId: id,
-				deleted,
-				ts: new Date().toISOString(),
-			}),
-		);
-
-		if (!deleted) {
-			return c.json({ success: false, errors: [{ code: 404, message: 'Upstream token not found' }] }, 404);
-		}
-
-		return c.json({ success: true, result: { deleted: true } });
-	}
-
-	const revoked = await stub.revokeUpstreamToken(id);
+	const deleted = await stub.deleteUpstreamToken(id);
 
 	console.log(
 		JSON.stringify({
-			route: 'admin.revokeUpstreamToken',
+			route: 'admin.deleteUpstreamToken',
 			tokenId: id,
-			revoked,
+			deleted,
 			ts: new Date().toISOString(),
 		}),
 	);
 
-	if (!revoked) {
-		return c.json({ success: false, errors: [{ code: 404, message: 'Upstream token not found or already revoked' }] }, 404);
+	if (!deleted) {
+		return c.json({ success: false, errors: [{ code: 404, message: 'Upstream token not found' }] }, 404);
 	}
 
-	return c.json({ success: true, result: { revoked: true } });
-});
-
-// ─── Bulk revoke ────────────────────────────────────────────────────────────
-
-const MAX_BULK_ITEMS = 100;
-
-adminUpstreamTokensApp.post('/bulk-revoke', async (c) => {
-	const log: Record<string, unknown> = { route: 'admin.bulkRevokeUpstreamTokens', ts: new Date().toISOString() };
-
-	const body = await parseBulkBody(c);
-	if (body instanceof Response) return body;
-
-	const { ids, dryRun } = body;
-	const stub = getStub(c.env);
-
-	if (dryRun) {
-		const preview = await stub.bulkInspectUpstreamTokens(ids, 'revoked');
-		log.status = 200;
-		log.dryRun = true;
-		log.count = ids.length;
-		console.log(JSON.stringify(log));
-		return c.json({ success: true, result: preview });
-	}
-
-	const result = await stub.bulkRevokeUpstreamTokens(ids);
-	log.status = 200;
-	log.processed = result.processed;
-	console.log(JSON.stringify(log));
-	return c.json({ success: true, result });
+	return c.json({ success: true, result: { deleted: true } });
 });
 
 // ─── Bulk delete ────────────────────────────────────────────────────────────
+
+const MAX_BULK_ITEMS = 100;
 
 adminUpstreamTokensApp.post('/bulk-delete', async (c) => {
 	const log: Record<string, unknown> = { route: 'admin.bulkDeleteUpstreamTokens', ts: new Date().toISOString() };

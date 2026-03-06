@@ -153,9 +153,9 @@ export async function run(ctx: SmokeContext): Promise<void> {
 		if (idx >= 0) state.createdS3Creds.splice(idx, 1);
 	}
 
-	// ─── 12e. Bulk Revoke / Delete — Upstream Tokens ────────────────
+	// ─── 12e. Bulk Delete — Upstream Tokens ─────────────────────────
 
-	section('Bulk Revoke Upstream Tokens');
+	section('Bulk Delete Upstream Tokens');
 
 	const ut1 = await admin('POST', '/admin/upstream-tokens', {
 		name: 'smoke-bulk-upt-1',
@@ -173,44 +173,28 @@ export async function run(ctx: SmokeContext): Promise<void> {
 	assertStatus('create upstream token 2 -> 200', ut2, 200);
 	const UT2_ID = ut2.body?.result?.id;
 
-	// Pre-revoke UT2
-	const revUt2 = await admin('DELETE', `/admin/upstream-tokens/${UT2_ID}`);
-	assertStatus('pre-revoke UT2 -> 200', revUt2, 200);
-
-	// Bulk revoke
-	const bulkRevokeUpt = await admin('POST', '/admin/upstream-tokens/bulk-revoke', {
+	const bulkDeleteUpt = await admin('POST', '/admin/upstream-tokens/bulk-delete', {
 		ids: [UT1_ID, UT2_ID, 'upt_000000000000000000000000'],
 		confirm_count: 3,
-	});
-	assertStatus('bulk-revoke upstream tokens -> 200', bulkRevokeUpt, 200);
-	const uptRStatuses = Object.fromEntries((bulkRevokeUpt.body?.result?.results ?? []).map((r: any) => [r.id, r.status]));
-	assertJson('UT1 revoked', uptRStatuses[UT1_ID], 'revoked');
-	assertJson('UT2 already_revoked', uptRStatuses[UT2_ID], 'already_revoked');
-	assertJson('nonexistent not_found', uptRStatuses['upt_000000000000000000000000'], 'not_found');
-
-	section('Bulk Delete Upstream Tokens');
-
-	const bulkDeleteUpt = await admin('POST', '/admin/upstream-tokens/bulk-delete', {
-		ids: [UT1_ID, UT2_ID],
-		confirm_count: 2,
 	});
 	assertStatus('bulk-delete upstream tokens -> 200', bulkDeleteUpt, 200);
 	const uptDStatuses = Object.fromEntries((bulkDeleteUpt.body?.result?.results ?? []).map((r: any) => [r.id, r.status]));
 	assertJson('UT1 deleted', uptDStatuses[UT1_ID], 'deleted');
 	assertJson('UT2 deleted', uptDStatuses[UT2_ID], 'deleted');
+	assertJson('nonexistent not_found', uptDStatuses['upt_000000000000000000000000'], 'not_found');
 
 	// Verify gone
 	const getUt1 = await admin('GET', `/admin/upstream-tokens/${UT1_ID}`);
 	assertStatus('UT1 gone after bulk-delete', getUt1, 404);
 
-	// ─── 12f. Bulk Revoke / Delete — Upstream R2 ────────────────────
+	// ─── 12f. Bulk Delete — Upstream R2 ─────────────────────────────
 
 	if (SKIP_S3) {
 		section('Bulk Upstream R2 (SKIPPED — no R2 env)');
 		return;
 	}
 
-	section('Bulk Revoke Upstream R2');
+	section('Bulk Delete Upstream R2');
 
 	const ur1 = await admin('POST', '/admin/upstream-r2', {
 		name: 'smoke-bulk-ur2-1',
@@ -232,26 +216,15 @@ export async function run(ctx: SmokeContext): Promise<void> {
 	assertStatus('create upstream R2 2 -> 200', ur2, 200);
 	const UR2_ID = ur2.body?.result?.id;
 
-	// Bulk revoke
-	const bulkRevokeUr2 = await admin('POST', '/admin/upstream-r2/bulk-revoke', {
-		ids: [UR1_ID, 'upr2_000000000000000000000000'],
-		confirm_count: 2,
-	});
-	assertStatus('bulk-revoke upstream R2 -> 200', bulkRevokeUr2, 200);
-	const ur2RStatuses = Object.fromEntries((bulkRevokeUr2.body?.result?.results ?? []).map((r: any) => [r.id, r.status]));
-	assertJson('UR1 revoked', ur2RStatuses[UR1_ID], 'revoked');
-	assertJson('nonexistent not_found', ur2RStatuses['upr2_000000000000000000000000'], 'not_found');
-
-	section('Bulk Delete Upstream R2');
-
 	const bulkDeleteUr2 = await admin('POST', '/admin/upstream-r2/bulk-delete', {
-		ids: [UR1_ID, UR2_ID],
-		confirm_count: 2,
+		ids: [UR1_ID, UR2_ID, 'upr2_000000000000000000000000'],
+		confirm_count: 3,
 	});
 	assertStatus('bulk-delete upstream R2 -> 200', bulkDeleteUr2, 200);
 	const ur2DStatuses = Object.fromEntries((bulkDeleteUr2.body?.result?.results ?? []).map((r: any) => [r.id, r.status]));
 	assertJson('UR1 deleted', ur2DStatuses[UR1_ID], 'deleted');
 	assertJson('UR2 deleted', ur2DStatuses[UR2_ID], 'deleted');
+	assertJson('nonexistent not_found', ur2DStatuses['upr2_000000000000000000000000'], 'not_found');
 
 	// Verify gone
 	const getUr1 = await admin('GET', `/admin/upstream-r2/${UR1_ID}`);

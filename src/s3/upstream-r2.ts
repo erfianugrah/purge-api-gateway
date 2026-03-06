@@ -12,7 +12,6 @@ export interface UpstreamR2 {
 	endpoint: string;
 	created_at: number;
 	created_by: string | null;
-	revoked: number;
 }
 
 /** Full row including secrets — never expose via API. */
@@ -67,8 +66,7 @@ export class UpstreamR2Manager {
 				endpoint TEXT NOT NULL,
 				bucket_names TEXT NOT NULL,
 				created_at INTEGER NOT NULL,
-				created_by TEXT,
-				revoked INTEGER NOT NULL DEFAULT 0
+				created_by TEXT
 			);
 		`);
 	}
@@ -83,8 +81,8 @@ export class UpstreamR2Manager {
 		const preview = makePreview(req.access_key_id);
 
 		this.sql.exec(
-			`INSERT INTO upstream_r2 (id, name, access_key_id, secret_access_key, access_key_preview, endpoint, bucket_names, created_at, created_by, revoked)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+			`INSERT INTO upstream_r2 (id, name, access_key_id, secret_access_key, access_key_preview, endpoint, bucket_names, created_at, created_by)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			id,
 			req.name,
 			req.access_key_id,
@@ -107,27 +105,15 @@ export class UpstreamR2Manager {
 				endpoint: req.endpoint,
 				created_at: now,
 				created_by: req.created_by ?? null,
-				revoked: 0,
 			},
 		};
 	}
 
 	/** List all upstream R2 endpoints (never includes secrets). */
-	listEndpoints(filter?: 'active' | 'revoked'): UpstreamR2[] {
-		const conditions: string[] = [];
-		const params: unknown[] = [];
-
-		if (filter === 'active') {
-			conditions.push('revoked = 0');
-		} else if (filter === 'revoked') {
-			conditions.push('revoked = 1');
-		}
-
-		const where = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '';
+	listEndpoints(): UpstreamR2[] {
 		return queryAll<UpstreamR2>(
 			this.sql,
-			`SELECT id, name, bucket_names, access_key_preview, endpoint, created_at, created_by, revoked FROM upstream_r2${where} ORDER BY created_at DESC`,
-			...params,
+			'SELECT id, name, bucket_names, access_key_preview, endpoint, created_at, created_by FROM upstream_r2 ORDER BY created_at DESC',
 		);
 	}
 
@@ -135,20 +121,11 @@ export class UpstreamR2Manager {
 	getEndpoint(id: string): { endpoint: UpstreamR2 } | null {
 		const rows = queryAll<UpstreamR2>(
 			this.sql,
-			'SELECT id, name, bucket_names, access_key_preview, endpoint, created_at, created_by, revoked FROM upstream_r2 WHERE id = ?',
+			'SELECT id, name, bucket_names, access_key_preview, endpoint, created_at, created_by FROM upstream_r2 WHERE id = ?',
 			id,
 		);
 		if (rows.length === 0) return null;
 		return { endpoint: rows[0] };
-	}
-
-	/** Soft-revoke an upstream R2 endpoint. */
-	revokeEndpoint(id: string): boolean {
-		const result = this.sql.exec('UPDATE upstream_r2 SET revoked = 1 WHERE id = ? AND revoked = 0', id);
-		if (result.rowsWritten > 0) {
-			this.invalidateCache();
-		}
-		return result.rowsWritten > 0;
 	}
 
 	/** Permanently delete an upstream R2 endpoint. Returns true if the row existed and was removed. */
@@ -161,23 +138,6 @@ export class UpstreamR2Manager {
 	}
 
 	// ─── Bulk operations ────────────────────────────────────────────────
-
-	/** Bulk soft-revoke endpoints. Returns per-item status. */
-	bulkRevoke(ids: string[]): BulkResult {
-		const results: BulkItemResult[] = [];
-		for (const id of ids) {
-			const existing = this.getEndpoint(id);
-			if (!existing) {
-				results.push({ id, status: 'not_found' });
-			} else if (existing.endpoint.revoked) {
-				results.push({ id, status: 'already_revoked' });
-			} else {
-				this.revokeEndpoint(id);
-				results.push({ id, status: 'revoked' });
-			}
-		}
-		return { processed: results.length, results };
-	}
 
 	/** Bulk hard-delete endpoints. Returns per-item status. */
 	bulkDelete(ids: string[]): BulkResult {
@@ -197,8 +157,7 @@ export class UpstreamR2Manager {
 			if (!existing) {
 				items.push({ id, current_status: 'not_found', would_become: 'not_found' });
 			} else {
-				const currentStatus: BulkInspectItem['current_status'] = existing.endpoint.revoked ? 'revoked' : 'active';
-				items.push({ id, current_status: currentStatus, would_become: wouldBecome });
+				items.push({ id, current_status: 'active', would_become: wouldBecome });
 			}
 		}
 		return { dry_run: true, would_process: items.length, items };
@@ -217,7 +176,7 @@ export class UpstreamR2Manager {
 			return cached.creds;
 		}
 
-		const rows = queryAll<UpstreamR2Row>(this.sql, 'SELECT * FROM upstream_r2 WHERE revoked = 0 ORDER BY created_at DESC');
+		const rows = queryAll<UpstreamR2Row>(this.sql, 'SELECT * FROM upstream_r2 ORDER BY created_at DESC');
 
 		let wildcardCreds: R2Credentials | null = null;
 
@@ -250,7 +209,7 @@ export class UpstreamR2Manager {
 	 * Returns the first active wildcard endpoint, or the first active endpoint.
 	 */
 	resolveForListBuckets(): R2Credentials | null {
-		const rows = queryAll<UpstreamR2Row>(this.sql, 'SELECT * FROM upstream_r2 WHERE revoked = 0 ORDER BY created_at ASC');
+		const rows = queryAll<UpstreamR2Row>(this.sql, 'SELECT * FROM upstream_r2 ORDER BY created_at ASC');
 		if (rows.length === 0) return null;
 
 		// Prefer wildcard

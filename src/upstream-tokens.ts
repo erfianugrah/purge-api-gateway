@@ -12,7 +12,6 @@ export interface UpstreamToken {
 	token_preview: string;
 	created_at: number;
 	created_by: string | null;
-	revoked: number;
 }
 
 /** Full token row including the secret — never expose via API. */
@@ -55,8 +54,7 @@ export class UpstreamTokenManager {
 				token_preview TEXT NOT NULL,
 				zone_ids TEXT NOT NULL,
 				created_at INTEGER NOT NULL,
-				created_by TEXT,
-				revoked INTEGER NOT NULL DEFAULT 0
+				created_by TEXT
 			);
 		`);
 	}
@@ -71,8 +69,8 @@ export class UpstreamTokenManager {
 		const preview = makePreview(req.token);
 
 		this.sql.exec(
-			`INSERT INTO upstream_tokens (id, name, token, token_preview, zone_ids, created_at, created_by, revoked)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
+			`INSERT INTO upstream_tokens (id, name, token, token_preview, zone_ids, created_at, created_by)
+			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 			id,
 			req.name,
 			req.token,
@@ -92,27 +90,15 @@ export class UpstreamTokenManager {
 				token_preview: preview,
 				created_at: now,
 				created_by: req.created_by ?? null,
-				revoked: 0,
 			},
 		};
 	}
 
 	/** List all upstream tokens (never includes the secret). */
-	listTokens(filter?: 'active' | 'revoked'): UpstreamToken[] {
-		const conditions: string[] = [];
-		const params: unknown[] = [];
-
-		if (filter === 'active') {
-			conditions.push('revoked = 0');
-		} else if (filter === 'revoked') {
-			conditions.push('revoked = 1');
-		}
-
-		const where = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '';
+	listTokens(): UpstreamToken[] {
 		return queryAll<UpstreamToken>(
 			this.sql,
-			`SELECT id, name, zone_ids, token_preview, created_at, created_by, revoked FROM upstream_tokens${where} ORDER BY created_at DESC`,
-			...params,
+			'SELECT id, name, zone_ids, token_preview, created_at, created_by FROM upstream_tokens ORDER BY created_at DESC',
 		);
 	}
 
@@ -120,20 +106,11 @@ export class UpstreamTokenManager {
 	getToken(id: string): { token: UpstreamToken } | null {
 		const rows = queryAll<UpstreamToken>(
 			this.sql,
-			'SELECT id, name, zone_ids, token_preview, created_at, created_by, revoked FROM upstream_tokens WHERE id = ?',
+			'SELECT id, name, zone_ids, token_preview, created_at, created_by FROM upstream_tokens WHERE id = ?',
 			id,
 		);
 		if (rows.length === 0) return null;
 		return { token: rows[0] };
-	}
-
-	/** Soft-revoke an upstream token. */
-	revokeToken(id: string): boolean {
-		const result = this.sql.exec('UPDATE upstream_tokens SET revoked = 1 WHERE id = ? AND revoked = 0', id);
-		if (result.rowsWritten > 0) {
-			this.invalidateCache();
-		}
-		return result.rowsWritten > 0;
 	}
 
 	/** Permanently delete an upstream token. Returns true if the row existed and was removed. */
@@ -146,23 +123,6 @@ export class UpstreamTokenManager {
 	}
 
 	// ─── Bulk operations ────────────────────────────────────────────────
-
-	/** Bulk soft-revoke tokens. Returns per-item status. */
-	bulkRevoke(ids: string[]): BulkResult {
-		const results: BulkItemResult[] = [];
-		for (const id of ids) {
-			const existing = this.getToken(id);
-			if (!existing) {
-				results.push({ id, status: 'not_found' });
-			} else if (existing.token.revoked) {
-				results.push({ id, status: 'already_revoked' });
-			} else {
-				this.revokeToken(id);
-				results.push({ id, status: 'revoked' });
-			}
-		}
-		return { processed: results.length, results };
-	}
 
 	/** Bulk hard-delete tokens. Returns per-item status. */
 	bulkDelete(ids: string[]): BulkResult {
@@ -182,8 +142,7 @@ export class UpstreamTokenManager {
 			if (!existing) {
 				items.push({ id, current_status: 'not_found', would_become: 'not_found' });
 			} else {
-				const currentStatus: BulkInspectItem['current_status'] = existing.token.revoked ? 'revoked' : 'active';
-				items.push({ id, current_status: currentStatus, would_become: wouldBecome });
+				items.push({ id, current_status: 'active', would_become: wouldBecome });
 			}
 		}
 		return { dry_run: true, would_process: items.length, items };
@@ -204,7 +163,7 @@ export class UpstreamTokenManager {
 		}
 
 		// Look for a token that covers this zone — prefer exact match over wildcard
-		const rows = queryAll<UpstreamTokenRow>(this.sql, 'SELECT * FROM upstream_tokens WHERE revoked = 0');
+		const rows = queryAll<UpstreamTokenRow>(this.sql, 'SELECT * FROM upstream_tokens');
 
 		let wildcardToken: string | null = null;
 
