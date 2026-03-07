@@ -131,7 +131,8 @@ describe('validateAccessJwt', () => {
 
 	it('returns null for expired JWT', async () => {
 		mockCerts();
-		const token = await createJwt(defaultPayload({ exp: Math.floor(Date.now() / 1000) - 60 }));
+		// Expired well beyond the 60s clock-skew tolerance window
+		const token = await createJwt(defaultPayload({ exp: Math.floor(Date.now() / 1000) - 120 }));
 		const request = new Request('https://purge.example.com/admin/keys', {
 			headers: { 'Cf-Access-Jwt-Assertion': token },
 		});

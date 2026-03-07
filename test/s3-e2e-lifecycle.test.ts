@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { SELF, fetchMock } from 'cloudflare:test';
 import { createCredential, buildClient, signedFetch, mockR2, registerUpstreamR2, s3WildcardPolicy } from './s3-helpers';
-import { adminHeaders } from './helpers';
+import { adminHeaders, waitForAnalytics } from './helpers';
 
 describe('S3 proxy — credential lifecycle via admin API', () => {
 	beforeAll(async () => {
@@ -163,7 +163,7 @@ describe('S3 proxy — S3 analytics', () => {
 		expect(res.status).toBe(200);
 
 		// Give waitUntil a moment to complete
-		await new Promise((r) => setTimeout(r, 100));
+		await waitForAnalytics(100);
 
 		const eventsRes = await SELF.fetch(`http://localhost/admin/s3/analytics/events?credential_id=${accessKeyId}`, {
 			headers: adminHeaders(),
@@ -193,7 +193,7 @@ describe('S3 proxy — S3 analytics', () => {
 			headers: { 'Content-Type': 'text/plain' },
 		});
 
-		await new Promise((r) => setTimeout(r, 100));
+		await waitForAnalytics(100);
 
 		const summaryRes = await SELF.fetch(`http://localhost/admin/s3/analytics/summary?bucket=analytics-bucket`, { headers: adminHeaders() });
 		expect(summaryRes.status).toBe(200);

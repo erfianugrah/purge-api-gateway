@@ -1,7 +1,7 @@
 import type { PolicyDocument } from './policy-types';
 import type { AccessIdentity } from './auth-access';
 
-// --- Hono env ───────────────────────────────────────────────────────────────
+// ─── Hono env ───────────────────────────────────────────────────────────────
 
 /** Admin role hierarchy: admin > operator > viewer. */
 export type AdminRole = 'admin' | 'operator' | 'viewer';
@@ -18,7 +18,7 @@ type HonoEnv = {
 
 export type { HonoEnv };
 
-// --- Purge request types ---
+// ─── Purge request types ────────────────────────────────────────────────────
 
 /** Human-readable purge operation type stored in analytics. */
 export type PurgeType = 'host' | 'tag' | 'prefix' | 'url' | 'everything';
@@ -46,7 +46,7 @@ export interface PurgeBody {
 	purge_everything?: boolean;
 }
 
-// --- Token bucket types ---
+// ─── Token bucket types ─────────────────────────────────────────────────────
 
 export interface ConsumeResult {
 	allowed: boolean;
@@ -65,7 +65,7 @@ export interface RateLimitConfig {
 	single: BucketConfig;
 }
 
-// --- IAM types ---
+// ─── IAM types ──────────────────────────────────────────────────────────────
 
 export interface ApiKey {
 	id: string;
@@ -113,7 +113,7 @@ export interface AuthResult {
 	denied?: string[];
 }
 
-// --- Cached key for hot path ---
+// ─── Cached key for hot path ────────────────────────────────────────────────
 
 export interface CachedKey {
 	key: ApiKey;
@@ -122,7 +122,7 @@ export interface CachedKey {
 	cachedAt: number;
 }
 
-// --- Bulk operation types ---
+// ─── Bulk operation types ───────────────────────────────────────────────────
 
 /** Per-item status from a bulk revoke operation. */
 export type BulkRevokeStatus = 'revoked' | 'already_revoked' | 'not_found';
@@ -156,7 +156,7 @@ export interface BulkDryRunResult {
 	items: BulkInspectItem[];
 }
 
-// --- Request collapsing types ---
+// ─── Request collapsing types ───────────────────────────────────────────────
 
 export interface PurgeResult {
 	status: number;

@@ -1,23 +1,8 @@
 import { defineCommand } from 'citty';
 import { resolveConfig, request, assertOk } from '../client.js';
-import {
-	success,
-	info,
-	warn,
-	error,
-	bold,
-	dim,
-	cyan,
-	green,
-	red,
-	yellow,
-	table,
-	label,
-	printJson,
-	formatDuration,
-	confirmAction,
-} from '../ui.js';
+import { success, info, warn, error, bold, dim, cyan, table, label, printJson, formatDuration, confirmAction } from '../ui.js';
 import { baseArgs, forceArg } from '../shared-args.js';
+import { makeBulkSubcommand } from '../bulk-helpers.js';
 
 const globalArgs = baseArgs;
 
@@ -36,12 +21,16 @@ const create = defineCommand({
 		},
 		token: {
 			type: 'string',
-			description: 'Cloudflare API token value ($UPSTREAM_CF_TOKEN)',
+			description: 'Cloudflare API token value ($UPSTREAM_CF_TOKEN). Prefer UPSTREAM_CF_TOKEN env var to avoid shell history exposure',
 		},
 		'zone-ids': {
 			type: 'string',
 			description: 'Comma-separated zone IDs this token covers, or "*" for all',
 			required: true,
+		},
+		validate: {
+			type: 'boolean',
+			description: 'Validate the token against Cloudflare API on creation',
 		},
 	},
 	async run({ args }) {
@@ -55,11 +44,15 @@ const create = defineCommand({
 
 		const zoneIds = args['zone-ids'] === '*' ? ['*'] : args['zone-ids'].split(',').map((s) => s.trim());
 
-		const body = {
+		const body: Record<string, unknown> = {
 			name: args.name,
 			token: tokenValue,
 			zone_ids: zoneIds,
 		};
+
+		if (args.validate) {
+			body.validate = true;
+		}
 
 		const { status, data, durationMs } = await request(config, 'POST', '/admin/upstream-tokens', {
 			body,
@@ -81,6 +74,15 @@ const create = defineCommand({
 		console.error('');
 		formatUpstreamToken(result);
 		console.error('');
+
+		const warnings = result.warnings as string[] | undefined;
+		if (warnings && warnings.length > 0) {
+			for (const w of warnings) {
+				warn(w);
+			}
+			console.error('');
+		}
+
 		warn('The token value is stored write-only and cannot be retrieved again.');
 		console.error('');
 	},
@@ -207,74 +209,12 @@ const del = defineCommand({
 });
 
 // --- upstream-tokens bulk-delete ---
-const bulkDelete = defineCommand({
-	meta: { name: 'bulk-delete', description: 'Bulk permanently delete multiple upstream tokens' },
-	args: {
-		...globalArgs,
-		ids: {
-			type: 'string',
-			description: 'Comma-separated list of token IDs (upt_...)',
-			required: true,
-		},
-		confirm: {
-			type: 'boolean',
-			description: 'Execute the operation (without this flag, runs in dry-run mode)',
-		},
-	},
-	async run({ args }) {
-		const config = resolveConfig(args);
-		const ids = args.ids
-			.split(',')
-			.map((s: string) => s.trim())
-			.filter(Boolean);
-
-		if (ids.length === 0) {
-			error('No token IDs provided');
-			process.exit(1);
-		}
-
-		const body: Record<string, unknown> = {
-			ids,
-			confirm_count: ids.length,
-			dry_run: !args.confirm,
-		};
-
-		const { status, data, durationMs } = await request(config, 'POST', '/admin/upstream-tokens/bulk-delete', {
-			body,
-			auth: 'admin',
-			label: args.confirm ? 'Bulk deleting upstream tokens...' : 'Previewing bulk delete (dry run)...',
-		});
-
-		if (args.json) {
-			assertOk(status, data);
-			printJson(data);
-			return;
-		}
-
-		assertOk(status, data);
-		const result = (data as Record<string, unknown>).result as Record<string, unknown>;
-
-		console.error('');
-		if (result.dry_run) {
-			warn(`Dry run — no changes made ${dim(`(${formatDuration(durationMs)})`)}`);
-			console.error('');
-			const items = result.items as { id: string; current_status: string; would_become: string }[];
-			const rows = items.map((i) => [cyan(i.id), i.current_status, yellow(i.would_become)]);
-			table(['ID', 'Current Status', 'Would Become'], rows);
-			console.error('');
-			info(`Re-run with ${bold('--confirm')} to execute.`);
-		} else {
-			success(`Bulk delete complete ${dim(`(${formatDuration(durationMs)})`)}`);
-			console.error('');
-			const results = result.results as { id: string; status: string }[];
-			const rows = results.map((r) => {
-				const statusLabel = r.status === 'deleted' ? green(r.status) : red(r.status);
-				return [cyan(r.id), statusLabel];
-			});
-			table(['ID', 'Status'], rows);
-		}
-		console.error('');
-	},
+const bulkDelete = makeBulkSubcommand({
+	entityName: 'tokens',
+	apiPath: '/admin/upstream-tokens/bulk-delete',
+	idField: 'ids',
+	action: 'delete',
+	displayField: 'token IDs (upt_...)',
 });
 
 // --- Formatting helper ---

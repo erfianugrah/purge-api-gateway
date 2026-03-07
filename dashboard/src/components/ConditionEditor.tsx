@@ -33,6 +33,11 @@ export interface ConditionEditorProps {
 const NO_VALUE_OPERATORS = new Set(['exists', 'not_exists']);
 const ARRAY_OPERATORS = new Set(['in', 'not_in']);
 
+/** Ensure a condition has a stable _id for React keys. */
+function ensureConditionId<T extends Condition>(c: T): T {
+	return c._id ? c : { ...c, _id: crypto.randomUUID() };
+}
+
 type GroupType = 'all' | 'any' | 'not';
 
 // ─── Type guards ────────────────────────────────────────────────────
@@ -285,21 +290,21 @@ function ConditionNode({ condition, onChange, onRemove, fields, operators, defau
 
 	const switchGroupType = (newType: GroupType) => {
 		if (newType === groupType) return;
+		const fallback: LeafCondition = { _id: crypto.randomUUID(), field: defaultField, operator: 'eq', value: '' };
 		if (newType === 'not') {
-			// NOT wraps a single condition — take first child
-			onChange({ not: children[0] ?? { field: defaultField, operator: 'eq', value: '' } });
+			onChange({ _id: condition._id, not: children[0] ?? fallback });
 		} else if (newType === 'any') {
-			onChange({ any: children.length > 0 ? children : [{ field: defaultField, operator: 'eq', value: '' }] });
+			onChange({ _id: condition._id, any: children.length > 0 ? children : [fallback] });
 		} else {
-			onChange({ all: children.length > 0 ? children : [{ field: defaultField, operator: 'eq', value: '' }] });
+			onChange({ _id: condition._id, all: children.length > 0 ? children : [fallback] });
 		}
 	};
 
 	const addChild = () => {
-		const newChild: LeafCondition = { field: defaultField, operator: 'eq', value: '' };
+		const newChild: LeafCondition = { _id: crypto.randomUUID(), field: defaultField, operator: 'eq', value: '' };
 		if (groupType === 'not') {
 			// NOT can only have one child — wrap current in ALL with new sibling
-			onChange({ all: [condition, newChild] });
+			onChange({ _id: crypto.randomUUID(), all: [condition, newChild] });
 		} else {
 			updateChildren([...children, newChild]);
 		}
@@ -362,18 +367,22 @@ function ConditionNode({ condition, onChange, onRemove, fields, operators, defau
 
 			{/* Children */}
 			<div className="space-y-2">
-				{children.map((child, i) => (
-					<ConditionNode
-						key={i}
-						condition={child}
-						onChange={(c) => updateChild(i, c)}
-						onRemove={() => removeChild(i)}
-						fields={fields}
-						operators={operators}
-						defaultField={defaultField}
-						depth={depth + 1}
-					/>
-				))}
+				{children.map((rawChild, i) => {
+					const child = ensureConditionId(rawChild);
+					if (child !== rawChild) children[i] = child;
+					return (
+						<ConditionNode
+							key={child._id}
+							condition={child}
+							onChange={(c) => updateChild(i, c)}
+							onRemove={() => removeChild(i)}
+							fields={fields}
+							operators={operators}
+							defaultField={defaultField}
+							depth={depth + 1}
+						/>
+					);
+				})}
 			</div>
 
 			{/* Add child (not for NOT which only holds one) */}
@@ -399,14 +408,14 @@ function ConditionNode({ condition, onChange, onRemove, fields, operators, defau
 
 export function ConditionEditor({ conditions, onChange, fields, operators, defaultField }: ConditionEditorProps) {
 	const addLeaf = () => {
-		onChange([...conditions, { field: defaultField, operator: 'eq', value: '' }]);
+		onChange([...conditions, { _id: crypto.randomUUID(), field: defaultField, operator: 'eq', value: '' }]);
 	};
 
 	const addGroup = (type: GroupType) => {
-		const child: LeafCondition = { field: defaultField, operator: 'eq', value: '' };
-		if (type === 'any') onChange([...conditions, { any: [child] }]);
-		else if (type === 'all') onChange([...conditions, { all: [child] }]);
-		else onChange([...conditions, { not: child }]);
+		const child: LeafCondition = { _id: crypto.randomUUID(), field: defaultField, operator: 'eq', value: '' };
+		if (type === 'any') onChange([...conditions, { _id: crypto.randomUUID(), any: [child] }]);
+		else if (type === 'all') onChange([...conditions, { _id: crypto.randomUUID(), all: [child] }]);
+		else onChange([...conditions, { _id: crypto.randomUUID(), not: child }]);
 	};
 
 	const updateCondition = (index: number, c: Condition) => {
@@ -423,18 +432,22 @@ export function ConditionEditor({ conditions, onChange, fields, operators, defau
 		<div className="space-y-2">
 			{conditions.length === 0 && <p className="text-xs text-muted-foreground italic">No conditions — all matching actions are allowed.</p>}
 
-			{conditions.map((c, i) => (
-				<ConditionNode
-					key={i}
-					condition={c}
-					onChange={(updated) => updateCondition(i, updated)}
-					onRemove={() => removeCondition(i)}
-					fields={fields}
-					operators={operators}
-					defaultField={defaultField}
-					depth={0}
-				/>
-			))}
+			{conditions.map((rawC, i) => {
+				const c = ensureConditionId(rawC);
+				if (c !== rawC) conditions[i] = c;
+				return (
+					<ConditionNode
+						key={c._id}
+						condition={c}
+						onChange={(updated) => updateCondition(i, updated)}
+						onRemove={() => removeCondition(i)}
+						fields={fields}
+						operators={operators}
+						defaultField={defaultField}
+						depth={0}
+					/>
+				);
+			})}
 
 			{/* Add buttons */}
 			<div className="flex items-center gap-1.5">

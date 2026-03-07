@@ -16,7 +16,7 @@ export function s3XmlError(
 	const xml = [
 		'<?xml version="1.0" encoding="UTF-8"?>',
 		'<Error>',
-		`<Code>${code}</Code>`,
+		`<Code>${escapeXml(code)}</Code>`,
 		`<Message>${escapeXml(message)}</Message>`,
 		`<RequestId>${rid}</RequestId>`,
 		'</Error>',

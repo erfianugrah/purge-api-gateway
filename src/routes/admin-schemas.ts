@@ -46,7 +46,7 @@ const leafConditionSchema = z.object({
 /** Recursive condition schema — leaf or compound (any/all/not). */
 const conditionSchema: z.ZodType<unknown> = z.lazy(() =>
 	z.union([
-		leafConditionSchema,
+		leafConditionSchema.meta({ id: 'LeafCondition' }),
 		z.object({ any: z.array(conditionSchema).min(1) }),
 		z.object({ all: z.array(conditionSchema).min(1) }),
 		z.object({ not: conditionSchema }),
@@ -84,7 +84,7 @@ const rateLimitSchema = z
 
 export const createKeySchema = z.object({
 	name: z.string().min(1, 'Required field: name (string)'),
-	zone_id: z.string().optional(),
+	zone_id: zoneIdString.optional(),
 	policy: policyDocumentSchema,
 	expires_in_days: positiveFiniteNumber.optional(),
 	created_by: z.string().optional(),
@@ -263,7 +263,7 @@ export type S3AnalyticsSummaryQuery = z.infer<typeof s3AnalyticsSummaryQuerySche
 
 /** Keys list query: GET /admin/keys?zone_id=&status= */
 export const listKeysQuerySchema = z.object({
-	zone_id: z.string().optional(),
+	zone_id: zoneIdString.optional(),
 	status: z.enum(['active', 'revoked']).optional(),
 });
 
@@ -282,7 +282,7 @@ export const deleteQuerySchema = z.object({
 		.enum(['true', 'false'])
 		.optional()
 		.transform((v) => v === 'true'),
-	zone_id: z.string().optional(),
+	zone_id: zoneIdString.optional(),
 });
 
 export type DeleteQuery = z.infer<typeof deleteQuerySchema>;

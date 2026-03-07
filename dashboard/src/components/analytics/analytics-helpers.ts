@@ -35,9 +35,13 @@ export function exportToJson(events: UnifiedEvent[], filename: string): void {
 	URL.revokeObjectURL(url);
 }
 
-export function copyToClipboard(events: UnifiedEvent[]): void {
+export async function copyToClipboard(events: UnifiedEvent[]): Promise<void> {
 	const raw = events.map((ev) => ev.raw);
-	navigator.clipboard.writeText(JSON.stringify(raw, null, 2));
+	try {
+		await navigator.clipboard.writeText(JSON.stringify(raw, null, 2));
+	} catch (e: any) {
+		console.error('Clipboard write failed:', e);
+	}
 }
 
 // ─── Event text for search matching ─────────────────────────────────

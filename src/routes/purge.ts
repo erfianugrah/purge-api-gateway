@@ -210,7 +210,7 @@ export function classifyPurge(body: PurgeBody, limits: { singleMaxOps: number; b
 
 	// Count which purge types are present — reject mixed bodies (matches CF API behavior)
 	const hasFiles = body.files && body.files.length > 0;
-	const hasPurgeEverything = 'purge_everything' in body;
+	const hasPurgeEverything = body.purge_everything === true;
 	const hasHosts = body.hosts && body.hosts.length > 0;
 	const hasTags = body.tags && body.tags.length > 0;
 	const hasPrefixes = body.prefixes && body.prefixes.length > 0;

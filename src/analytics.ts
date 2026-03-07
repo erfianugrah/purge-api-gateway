@@ -51,7 +51,7 @@ export async function logPurgeEvent(db: D1Database, event: PurgeEvent): Promise<
 				event.purge_target,
 				event.tokens,
 				event.status,
-				event.collapsed || null,
+				event.collapsed === false ? null : event.collapsed,
 				event.upstream_status,
 				event.duration_ms,
 				event.response_detail,

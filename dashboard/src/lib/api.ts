@@ -37,6 +37,8 @@ export interface PolicyDocument {
 }
 
 export interface Statement {
+	/** Client-side ID for stable React keys — not sent to the API. */
+	_id?: string;
 	effect: 'allow' | 'deny';
 	actions: string[];
 	resources: string[];
@@ -46,20 +48,28 @@ export interface Statement {
 export type Condition = LeafCondition | AnyCondition | AllCondition | NotCondition;
 
 export interface LeafCondition {
+	/** Client-side ID for stable React keys — not sent to the API. */
+	_id?: string;
 	field: string;
 	operator: string;
 	value: string | string[] | boolean;
 }
 
 export interface AnyCondition {
+	/** Client-side ID for stable React keys — not sent to the API. */
+	_id?: string;
 	any: Condition[];
 }
 
 export interface AllCondition {
+	/** Client-side ID for stable React keys — not sent to the API. */
+	_id?: string;
 	all: Condition[];
 }
 
 export interface NotCondition {
+	/** Client-side ID for stable React keys — not sent to the API. */
+	_id?: string;
 	not: Condition;
 }
 
@@ -149,6 +159,30 @@ function adminHeaders(): Record<string, string> {
 	return {};
 }
 
+// ─── Helpers ─────────────────────────────────────────────────────────
+
+/** Strip client-only _id fields from a policy before sending to the API. */
+function stripIds(policy: PolicyDocument): PolicyDocument {
+	return {
+		version: policy.version,
+		statements: policy.statements.map((s) => {
+			const { _id, ...rest } = s;
+			return {
+				...rest,
+				conditions: rest.conditions?.map(stripConditionId),
+			};
+		}),
+	};
+}
+
+function stripConditionId(c: Condition): Condition {
+	const { _id, ...rest } = c as any;
+	if ('any' in rest) return { any: rest.any.map(stripConditionId) };
+	if ('all' in rest) return { all: rest.all.map(stripConditionId) };
+	if ('not' in rest) return { not: stripConditionId(rest.not) };
+	return rest;
+}
+
 // ─── Key management ──────────────────────────────────────────────────
 
 export async function listKeys(zoneId?: string, status?: 'active' | 'revoked'): Promise<ApiKey[]> {
@@ -170,7 +204,7 @@ export async function getKey(id: string, zoneId?: string): Promise<{ key: ApiKey
 export async function createKey(req: CreateKeyRequest): Promise<{ key: ApiKey }> {
 	return apiFetch<{ key: ApiKey }>('/admin/keys', {
 		method: 'POST',
-		body: JSON.stringify(req),
+		body: JSON.stringify({ ...req, policy: stripIds(req.policy) }),
 	});
 }
 
@@ -287,7 +321,7 @@ export async function getS3Credential(accessKeyId: string): Promise<{ credential
 export async function createS3Credential(req: CreateS3CredentialRequest): Promise<{ credential: S3Credential }> {
 	return apiFetch<{ credential: S3Credential }>('/admin/s3/credentials', {
 		method: 'POST',
-		body: JSON.stringify(req),
+		body: JSON.stringify({ ...req, policy: stripIds(req.policy) }),
 	});
 }
 

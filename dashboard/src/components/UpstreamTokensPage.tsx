@@ -11,8 +11,12 @@ import { usePagination } from '@/hooks/use-pagination';
 import { TablePagination } from '@/components/TablePagination';
 import { listUpstreamTokens, createUpstreamToken, deleteUpstreamToken, bulkDeleteUpstreamTokens } from '@/lib/api';
 import type { UpstreamToken } from '@/lib/api';
-import { cn } from '@/lib/utils';
+import { cn, copyToClipboard } from '@/lib/utils';
 import { T } from '@/lib/typography';
+
+// ─── Constants ──────────────────────────────────────────────────────
+
+const ZONE_ID_RE = /^[a-f0-9]{32}$/;
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -70,6 +74,12 @@ function CreateTokenDialog({ onCreated }: CreateTokenDialogProps) {
 
 		if (zoneIds.length === 0) {
 			setError('At least one zone ID is required (or * for all)');
+			return;
+		}
+
+		const invalidZones = zoneIds.filter((z) => z !== '*' && !ZONE_ID_RE.test(z));
+		if (invalidZones.length > 0) {
+			setError(`Invalid zone ID(s): ${invalidZones.join(', ')} — must be 32-char hex or *`);
 			return;
 		}
 
@@ -205,7 +215,7 @@ export function UpstreamTokensPage() {
 	};
 
 	const handleCopyId = async (id: string) => {
-		await navigator.clipboard.writeText(id);
+		await copyToClipboard(id);
 		setCopiedId(id);
 		setTimeout(() => setCopiedId(null), 2000);
 	};
@@ -303,6 +313,7 @@ export function UpstreamTokensPage() {
 											checked={tokens.length > 0 && selectedIds.size === tokens.length}
 											onChange={toggleSelectAll}
 											className="rounded border-border"
+											aria-label="Select all"
 										/>
 									</TableHead>
 									<TableHead className={T.sectionLabel}>Name</TableHead>
@@ -323,6 +334,7 @@ export function UpstreamTokensPage() {
 												checked={selectedIds.has(t.id)}
 												onChange={() => toggleSelect(t.id)}
 												className="rounded border-border"
+												aria-label="Select row"
 											/>
 										</TableCell>
 										<TableCell className={T.tableRowName}>{t.name}</TableCell>

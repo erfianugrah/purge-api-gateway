@@ -175,9 +175,9 @@ export async function validateAccessJwt(request: Request, teamName: string, aud:
 	);
 	if (!valid) return null;
 
-	// Check expiry and issued-at
+	// Check expiry and issued-at (symmetric clock-skew tolerance)
 	const now = Math.floor(Date.now() / 1000);
-	if (jwt.payload.exp < now) return null;
+	if (jwt.payload.exp + JWT_CLOCK_SKEW_SEC < now) return null;
 	if (jwt.payload.iat > now + JWT_CLOCK_SKEW_SEC) return null;
 
 	// Check issuer

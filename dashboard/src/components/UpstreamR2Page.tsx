@@ -11,7 +11,7 @@ import { usePagination } from '@/hooks/use-pagination';
 import { TablePagination } from '@/components/TablePagination';
 import { listUpstreamR2, createUpstreamR2, deleteUpstreamR2, bulkDeleteUpstreamR2Endpoints } from '@/lib/api';
 import type { UpstreamR2 } from '@/lib/api';
-import { cn } from '@/lib/utils';
+import { cn, copyToClipboard } from '@/lib/utils';
 import { T } from '@/lib/typography';
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -243,7 +243,7 @@ export function UpstreamR2Page() {
 	};
 
 	const handleCopyId = async (id: string) => {
-		await navigator.clipboard.writeText(id);
+		await copyToClipboard(id);
 		setCopiedId(id);
 		setTimeout(() => setCopiedId(null), 2000);
 	};
@@ -341,6 +341,7 @@ export function UpstreamR2Page() {
 											checked={endpoints.length > 0 && selectedIds.size === endpoints.length}
 											onChange={toggleSelectAll}
 											className="rounded border-border"
+											aria-label="Select all"
 										/>
 									</TableHead>
 									<TableHead className={T.sectionLabel}>Name</TableHead>
@@ -362,6 +363,7 @@ export function UpstreamR2Page() {
 												checked={selectedIds.has(ep.id)}
 												onChange={() => toggleSelect(ep.id)}
 												className="rounded border-border"
+												aria-label="Select row"
 											/>
 										</TableCell>
 										<TableCell className={T.tableRowName}>{ep.name}</TableCell>

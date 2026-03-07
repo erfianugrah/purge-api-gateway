@@ -1,16 +1,18 @@
-import { useState } from "react";
-import { Send, Loader2, CheckCircle, XCircle } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
-import { cn } from "@/lib/utils";
-import { T } from "@/lib/typography";
+import { useState } from 'react';
+import { Send, Loader2, CheckCircle, XCircle } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
+import { cn } from '@/lib/utils';
+import { T } from '@/lib/typography';
+
+const ZONE_ID_RE = /^[a-f0-9]{32}$/;
 
 // ─── Types ──────────────────────────────────────────────────────────
 
-type PurgeType = "urls" | "hosts" | "tags" | "prefixes" | "everything";
+type PurgeType = 'urls' | 'hosts' | 'tags' | 'prefixes' | 'everything';
 
 interface PurgeOption {
 	value: PurgeType;
@@ -19,11 +21,11 @@ interface PurgeOption {
 }
 
 const PURGE_OPTIONS: PurgeOption[] = [
-	{ value: "urls", label: "URLs", placeholder: "https://example.com/css/style.css\nhttps://example.com/js/app.js" },
-	{ value: "hosts", label: "Hosts", placeholder: "www.example.com\nimages.example.com" },
-	{ value: "tags", label: "Tags", placeholder: "tag-a\ntag-b" },
-	{ value: "prefixes", label: "Prefixes", placeholder: "www.example.com/css\nwww.example.com/js" },
-	{ value: "everything", label: "Everything", placeholder: "" },
+	{ value: 'urls', label: 'URLs', placeholder: 'https://example.com/css/style.css\nhttps://example.com/js/app.js' },
+	{ value: 'hosts', label: 'Hosts', placeholder: 'www.example.com\nimages.example.com' },
+	{ value: 'tags', label: 'Tags', placeholder: 'tag-a\ntag-b' },
+	{ value: 'prefixes', label: 'Prefixes', placeholder: 'www.example.com/css\nwww.example.com/js' },
+	{ value: 'everything', label: 'Everything', placeholder: '' },
 ];
 
 interface PurgeResponse {
@@ -34,36 +36,37 @@ interface PurgeResponse {
 // ─── Purge Page ─────────────────────────────────────────────────────
 
 export function PurgePage() {
-	const [zoneId, setZoneId] = useState("");
-	const [purgeType, setPurgeType] = useState<PurgeType>("urls");
-	const [values, setValues] = useState("");
-	const [apiKey, setApiKey] = useState("");
+	const [zoneId, setZoneId] = useState('');
+	const [purgeType, setPurgeType] = useState<PurgeType>('urls');
+	const [values, setValues] = useState('');
+	const [apiKey, setApiKey] = useState('');
 	const [submitting, setSubmitting] = useState(false);
 	const [response, setResponse] = useState<PurgeResponse | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const [zoneIdError, setZoneIdError] = useState<string | null>(null);
 
 	const selectedOption = PURGE_OPTIONS.find((o) => o.value === purgeType)!;
 
 	const buildBody = (): Record<string, any> => {
-		if (purgeType === "everything") {
+		if (purgeType === 'everything') {
 			return { purge_everything: true };
 		}
 
 		const lines = values
-			.split("\n")
+			.split('\n')
 			.map((l) => l.trim())
 			.filter(Boolean);
 
 		if (lines.length === 0) {
-			throw new Error("Enter at least one value");
+			throw new Error('Enter at least one value');
 		}
 
 		// Map purge type to the Cloudflare API field name
 		const fieldMap: Record<string, string> = {
-			urls: "files",
-			hosts: "hosts",
-			tags: "tags",
-			prefixes: "prefixes",
+			urls: 'files',
+			hosts: 'hosts',
+			tags: 'tags',
+			prefixes: 'prefixes',
 		};
 
 		return { [fieldMap[purgeType]]: lines };
@@ -72,13 +75,19 @@ export function PurgePage() {
 	const handleSubmit = async () => {
 		setError(null);
 		setResponse(null);
+		setZoneIdError(null);
 
-		if (!zoneId.trim()) {
-			setError("Zone ID is required");
+		const trimmedZone = zoneId.trim();
+		if (!trimmedZone) {
+			setZoneIdError('Zone ID is required');
+			return;
+		}
+		if (!ZONE_ID_RE.test(trimmedZone)) {
+			setZoneIdError('Zone ID must be a 32-character hex string');
 			return;
 		}
 		if (!apiKey.trim()) {
-			setError("API key is required");
+			setError('API key is required');
 			return;
 		}
 
@@ -92,19 +101,25 @@ export function PurgePage() {
 
 		setSubmitting(true);
 		try {
-			const res = await fetch(`/v1/zones/${zoneId.trim()}/purge_cache`, {
-				method: "POST",
+			const res = await fetch(`/v1/zones/${trimmedZone}/purge_cache`, {
+				method: 'POST',
 				headers: {
-					"Content-Type": "application/json",
+					'Content-Type': 'application/json',
 					Authorization: `Bearer ${apiKey.trim()}`,
 				},
 				body: JSON.stringify(body),
 			});
 
-			const data = await res.json();
+			let data: any;
+			try {
+				data = await res.json();
+			} catch {
+				setError(`Server returned non-JSON response (HTTP ${res.status})`);
+				return;
+			}
 			setResponse({ success: data.success ?? res.ok, data });
 		} catch (e: any) {
-			setError(e.message ?? "Request failed");
+			setError(e.message ?? 'Request failed');
 		} finally {
 			setSubmitting(false);
 		}
@@ -115,9 +130,7 @@ export function PurgePage() {
 			<Card>
 				<CardHeader>
 					<CardTitle className={T.sectionHeading}>Manual Purge</CardTitle>
-					<p className={T.muted}>
-						Send a purge request directly to the gateway API using your API key.
-					</p>
+					<p className={T.muted}>Send a purge request directly to the gateway API using your API key.</p>
 				</CardHeader>
 				<CardContent className="space-y-5">
 					{/* ── Zone ID ────────────────────────────────────────── */}
@@ -126,9 +139,13 @@ export function PurgePage() {
 						<Input
 							placeholder="e.g. abc123def456..."
 							value={zoneId}
-							onChange={(e) => setZoneId(e.target.value)}
-							className="font-data"
+							onChange={(e) => {
+								setZoneId(e.target.value);
+								setZoneIdError(null);
+							}}
+							className={cn('font-data', zoneIdError && 'border-lv-red')}
 						/>
+						{zoneIdError && <p className="text-xs text-lv-red">{zoneIdError}</p>}
 					</div>
 
 					{/* ── API Key ────────────────────────────────────────── */}
@@ -163,7 +180,7 @@ export function PurgePage() {
 					</div>
 
 					{/* ── Values textarea ─────────────────────────────────── */}
-					{purgeType !== "everything" && (
+					{purgeType !== 'everything' && (
 						<div className="space-y-2">
 							<Label className={T.formLabel}>Values (one per line)</Label>
 							<textarea
@@ -175,20 +192,14 @@ export function PurgePage() {
 						</div>
 					)}
 
-					{purgeType === "everything" && (
+					{purgeType === 'everything' && (
 						<div className="rounded-lg border border-lv-peach/30 bg-lv-peach/10 px-4 py-3">
-							<p className="text-sm text-lv-peach">
-								This will purge all cached content for the zone. Use with caution.
-							</p>
+							<p className="text-sm text-lv-peach">This will purge all cached content for the zone. Use with caution.</p>
 						</div>
 					)}
 
 					{/* ── Submit ──────────────────────────────────────────── */}
-					<Button
-						onClick={handleSubmit}
-						disabled={submitting || !zoneId.trim() || !apiKey.trim()}
-						className="w-full"
-					>
+					<Button onClick={handleSubmit} disabled={submitting || !zoneId.trim() || !apiKey.trim()} className="w-full">
 						{submitting ? (
 							<>
 								<Loader2 className="h-4 w-4 animate-spin" />
@@ -205,17 +216,13 @@ export function PurgePage() {
 			</Card>
 
 			{/* ── Error ──────────────────────────────────────────────── */}
-			{error && (
-				<div className="rounded-lg border border-lv-red/30 bg-lv-red/10 px-4 py-3 text-sm text-lv-red">
-					{error}
-				</div>
-			)}
+			{error && <div className="rounded-lg border border-lv-red/30 bg-lv-red/10 px-4 py-3 text-sm text-lv-red">{error}</div>}
 
 			{/* ── Response ───────────────────────────────────────────── */}
 			{response && (
 				<Card>
 					<CardHeader>
-						<CardTitle className={cn(T.sectionHeading, "flex items-center gap-2")}>
+						<CardTitle className={cn(T.sectionHeading, 'flex items-center gap-2')}>
 							{response.success ? (
 								<>
 									<CheckCircle className="h-4 w-4 text-lv-green" />

@@ -100,6 +100,19 @@ export function AnalyticsPage() {
 		return sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />;
 	};
 
+	const sortableProps = (field: SortField) => ({
+		role: 'button' as const,
+		tabIndex: 0,
+		'aria-sort': (sortField === field ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none') as 'ascending' | 'descending' | 'none',
+		onClick: () => toggleSort(field),
+		onKeyDown: (e: React.KeyboardEvent) => {
+			if (e.key === 'Enter' || e.key === ' ') {
+				e.preventDefault();
+				toggleSort(field);
+			}
+		},
+	});
+
 	// ── Unified + filtered + sorted events ──────────────────────
 
 	const allEvents: UnifiedEvent[] = useMemo(() => [...purgeEvents.map(fromPurge), ...s3Events.map(fromS3)], [purgeEvents, s3Events]);
@@ -317,27 +330,24 @@ export function AnalyticsPage() {
 								<TableHeader>
 									<TableRow>
 										<TableHead className={cn(T.sectionLabel, 'w-6')} />
-										<TableHead className={cn(T.sectionLabel, 'cursor-pointer select-none')} onClick={() => toggleSort('created_at')}>
+										<TableHead className={cn(T.sectionLabel, 'cursor-pointer select-none')} {...sortableProps('created_at')}>
 											<span className="flex items-center gap-1">
 												Time <SortIcon field="created_at" />
 											</span>
 										</TableHead>
-										<TableHead className={cn(T.sectionLabel, 'cursor-pointer select-none')} onClick={() => toggleSort('source')}>
+										<TableHead className={cn(T.sectionLabel, 'cursor-pointer select-none')} {...sortableProps('source')}>
 											<span className="flex items-center gap-1">
 												Source <SortIcon field="source" />
 											</span>
 										</TableHead>
 										<TableHead className={T.sectionLabel}>Identity</TableHead>
 										<TableHead className={T.sectionLabel}>Detail</TableHead>
-										<TableHead className={cn(T.sectionLabel, 'cursor-pointer select-none')} onClick={() => toggleSort('status')}>
+										<TableHead className={cn(T.sectionLabel, 'cursor-pointer select-none')} {...sortableProps('status')}>
 											<span className="flex items-center gap-1">
 												Status <SortIcon field="status" />
 											</span>
 										</TableHead>
-										<TableHead
-											className={cn(T.sectionLabel, 'text-right cursor-pointer select-none')}
-											onClick={() => toggleSort('duration_ms')}
-										>
+										<TableHead className={cn(T.sectionLabel, 'text-right cursor-pointer select-none')} {...sortableProps('duration_ms')}>
 											<span className="flex items-center justify-end gap-1">
 												Duration <SortIcon field="duration_ms" />
 											</span>

@@ -11,8 +11,8 @@
 		"build:dashboard": "npm run --prefix dashboard build",
 		"build:cli": "tsc -p cli/tsconfig.json",
 		"typecheck": "tsc --noEmit && tsc -p cli/tsconfig.json --noEmit",
-		"lint": "prettier --check 'src/**/*.ts' 'cli/**/*.ts' 'test/**/*.ts'",
-		"lint:fix": "prettier --write 'src/**/*.ts' 'cli/**/*.ts' 'test/**/*.ts'",
+		"lint": "prettier --check 'src/**/*.ts' 'cli/**/*.ts' 'test/**/*.ts' 'scripts/**/*.ts'",
+		"lint:fix": "prettier --write 'src/**/*.ts' 'cli/**/*.ts' 'test/**/*.ts' 'scripts/**/*.ts'",
 		"test": "vitest run",
 		"test:worker": "vitest run -c vitest.worker.config.ts",
 		"test:cli": "vitest run -c vitest.cli.config.ts",
@@ -27,17 +27,15 @@
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "^0.12.19",
 		"@types/node": "^25.3.3",
+		"aws4fetch": "^1.0.20",
+		"citty": "^0.2.1",
+		"hono": "^4.12.5",
 		"prettier": "^3.8.1",
 		"tsx": "^4.21.0",
 		"typescript": "^5.5.2",
 		"vitest": "~3.2.0",
 		"wrangler": "^4.70.0",
+		"zod": "^4.3.6",
 		"zod-openapi": "^5.4.6"
-	},
-	"dependencies": {
-		"aws4fetch": "^1.0.20",
-		"citty": "^0.2.1",
-		"hono": "^4.12.5",
-		"zod": "^4.3.6"
 	}
 }

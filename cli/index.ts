@@ -1,10 +1,14 @@
 #!/usr/bin/env node
+import { createRequire } from 'node:module';
 import { defineCommand, runMain } from 'citty';
+
+const require = createRequire(import.meta.url);
+const pkg = require('../package.json') as { version: string };
 
 const main = defineCommand({
 	meta: {
 		name: 'gk',
-		version: '0.1.0',
+		version: pkg.version,
 		description: 'CLI for gatekeeper — API gateway with IAM',
 	},
 	subCommands: {

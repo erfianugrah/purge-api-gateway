@@ -4,7 +4,6 @@ import {
 	success,
 	info,
 	warn,
-	error,
 	bold,
 	dim,
 	cyan,
@@ -20,6 +19,7 @@ import {
 	confirmAction,
 } from '../ui.js';
 import { baseArgs, forceArg } from '../shared-args.js';
+import { makeBulkSubcommand } from '../bulk-helpers.js';
 
 const globalArgs = baseArgs;
 
@@ -265,145 +265,21 @@ function formatS3Credential(cred: Record<string, unknown>): void {
 }
 
 // --- s3-credentials bulk-revoke ---
-const bulkRevoke = defineCommand({
-	meta: { name: 'bulk-revoke', description: 'Bulk soft-revoke multiple S3 credentials' },
-	args: {
-		...globalArgs,
-		ids: {
-			type: 'string',
-			description: 'Comma-separated list of access key IDs (GK...)',
-			required: true,
-		},
-		confirm: {
-			type: 'boolean',
-			description: 'Execute the operation (without this flag, runs in dry-run mode)',
-		},
-	},
-	async run({ args }) {
-		const config = resolveConfig(args);
-		const ids = args.ids
-			.split(',')
-			.map((s: string) => s.trim())
-			.filter(Boolean);
-
-		if (ids.length === 0) {
-			error('No access key IDs provided');
-			process.exit(1);
-		}
-
-		const body: Record<string, unknown> = {
-			access_key_ids: ids,
-			confirm_count: ids.length,
-			dry_run: !args.confirm,
-		};
-
-		const { status, data, durationMs } = await request(config, 'POST', '/admin/s3/credentials/bulk-revoke', {
-			body,
-			auth: 'admin',
-			label: args.confirm ? 'Bulk revoking credentials...' : 'Previewing bulk revoke (dry run)...',
-		});
-
-		if (args.json) {
-			assertOk(status, data);
-			printJson(data);
-			return;
-		}
-
-		assertOk(status, data);
-		const result = (data as Record<string, unknown>).result as Record<string, unknown>;
-
-		console.error('');
-		if (result.dry_run) {
-			warn(`Dry run — no changes made ${dim(`(${formatDuration(durationMs)})`)}`);
-			console.error('');
-			const items = result.items as { id: string; current_status: string; would_become: string }[];
-			const rows = items.map((i) => [cyan(i.id), i.current_status, yellow(i.would_become)]);
-			table(['ID', 'Current Status', 'Would Become'], rows);
-			console.error('');
-			info(`Re-run with ${bold('--confirm')} to execute.`);
-		} else {
-			success(`Bulk revoke complete ${dim(`(${formatDuration(durationMs)})`)}`);
-			console.error('');
-			const results = result.results as { id: string; status: string }[];
-			const rows = results.map((r) => {
-				const statusLabel = r.status === 'revoked' ? green(r.status) : r.status === 'not_found' ? red(r.status) : yellow(r.status);
-				return [cyan(r.id), statusLabel];
-			});
-			table(['ID', 'Status'], rows);
-		}
-		console.error('');
-	},
+const bulkRevoke = makeBulkSubcommand({
+	entityName: 'credentials',
+	apiPath: '/admin/s3/credentials/bulk-revoke',
+	idField: 'access_key_ids',
+	action: 'revoke',
+	displayField: 'access key IDs (GK...)',
 });
 
 // --- s3-credentials bulk-delete ---
-const bulkDelete = defineCommand({
-	meta: { name: 'bulk-delete', description: 'Bulk permanently delete multiple S3 credentials' },
-	args: {
-		...globalArgs,
-		ids: {
-			type: 'string',
-			description: 'Comma-separated list of access key IDs (GK...)',
-			required: true,
-		},
-		confirm: {
-			type: 'boolean',
-			description: 'Execute the operation (without this flag, runs in dry-run mode)',
-		},
-	},
-	async run({ args }) {
-		const config = resolveConfig(args);
-		const ids = args.ids
-			.split(',')
-			.map((s: string) => s.trim())
-			.filter(Boolean);
-
-		if (ids.length === 0) {
-			error('No access key IDs provided');
-			process.exit(1);
-		}
-
-		const body: Record<string, unknown> = {
-			access_key_ids: ids,
-			confirm_count: ids.length,
-			dry_run: !args.confirm,
-		};
-
-		const { status, data, durationMs } = await request(config, 'POST', '/admin/s3/credentials/bulk-delete', {
-			body,
-			auth: 'admin',
-			label: args.confirm ? 'Bulk deleting credentials...' : 'Previewing bulk delete (dry run)...',
-		});
-
-		if (args.json) {
-			assertOk(status, data);
-			printJson(data);
-			return;
-		}
-
-		assertOk(status, data);
-		const result = (data as Record<string, unknown>).result as Record<string, unknown>;
-
-		console.error('');
-		if (result.dry_run) {
-			warn(`Dry run — no changes made ${dim(`(${formatDuration(durationMs)})`)}`);
-			console.error('');
-			const items = result.items as { id: string; current_status: string; would_become: string }[];
-			const rows = items.map((i) => [cyan(i.id), i.current_status, yellow(i.would_become)]);
-			table(['ID', 'Current Status', 'Would Become'], rows);
-			console.error('');
-			info(`Re-run with ${bold('--confirm')} to execute.`);
-		} else {
-			success(`Bulk delete complete ${dim(`(${formatDuration(durationMs)})`)}`);
-			console.error('');
-			const results = result.results as { id: string; status: string }[];
-			const rows = results.map((r) => {
-				const statusLabel = r.status === 'deleted' ? green(r.status) : red(r.status);
-				return [cyan(r.id), statusLabel];
-			});
-			table(['ID', 'Status'], rows);
-		}
-		console.error('');
-	},
+const bulkDelete = makeBulkSubcommand({
+	entityName: 'credentials',
+	apiPath: '/admin/s3/credentials/bulk-delete',
+	idField: 'access_key_ids',
+	action: 'delete',
+	displayField: 'access key IDs (GK...)',
 });
 
 // --- s3-credentials (parent) ---

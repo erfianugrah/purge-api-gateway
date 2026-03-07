@@ -9,6 +9,7 @@ import {
 	mockUpstreamSuccess,
 	registerUpstreamToken,
 	__testClearInflightCache,
+	waitForAnalytics,
 } from './helpers';
 
 // --- Setup ---
@@ -95,7 +96,7 @@ describe('Analytics — event logging', () => {
 		expect(purgeRes.status).toBe(200);
 
 		// Wait for fire-and-forget analytics write via waitUntil()
-		await new Promise((r) => setTimeout(r, 500));
+		await waitForAnalytics();
 
 		const res = await SELF.fetch(`http://localhost/admin/analytics/events?zone_id=${ZONE_ID}`, { headers: adminHeaders() });
 		expect(res.status).toBe(200);
@@ -128,7 +129,7 @@ describe('Analytics — event logging', () => {
 			body: JSON.stringify({ tags: ['summary-tag'] }),
 		});
 
-		await new Promise((r) => setTimeout(r, 500));
+		await waitForAnalytics();
 
 		const res = await SELF.fetch(`http://localhost/admin/analytics/summary?zone_id=${ZONE_ID}`, { headers: adminHeaders() });
 		expect(res.status).toBe(200);
@@ -159,7 +160,7 @@ describe('Analytics — filtering', () => {
 			body: JSON.stringify({ hosts: ['filter-key2.io'] }),
 		});
 
-		await new Promise((r) => setTimeout(r, 500));
+		await waitForAnalytics();
 
 		const res = await SELF.fetch(`http://localhost/admin/analytics/events?zone_id=${ZONE_ID}&key_id=${keyId1}`, {
 			headers: adminHeaders(),
@@ -184,7 +185,7 @@ describe('Analytics — filtering', () => {
 			});
 		}
 
-		await new Promise((r) => setTimeout(r, 500));
+		await waitForAnalytics();
 
 		const res = await SELF.fetch(`http://localhost/admin/analytics/events?zone_id=${ZONE_ID}&limit=2`, { headers: adminHeaders() });
 		expect(res.status).toBe(200);

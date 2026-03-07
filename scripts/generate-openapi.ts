@@ -206,6 +206,7 @@ const document = createDocument({
 					'401': errorResponse('Missing or invalid API key'),
 					'403': errorResponse('Policy denied'),
 					'429': errorResponse('Rate limited'),
+					'502': errorResponse('No upstream API token registered for zone'),
 				},
 			},
 		},

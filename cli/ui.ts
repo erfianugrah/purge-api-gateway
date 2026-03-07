@@ -333,9 +333,9 @@ export function parsePolicy(input: string): unknown {
 	}
 }
 
-/** Prompt user for y/N confirmation. Returns true if confirmed, false otherwise. Skips if not TTY. */
+/** Prompt user for y/N confirmation. Returns true if confirmed, false otherwise. Returns false if not TTY (use --force to bypass). */
 export async function confirmAction(message: string): Promise<boolean> {
-	if (!process.stdin.isTTY) return true;
+	if (!process.stdin.isTTY) return false;
 	warn(message);
 	process.stderr.write(`  Continue? [y/N] `);
 
@@ -352,7 +352,7 @@ export async function confirmAction(message: string): Promise<boolean> {
 	});
 }
 
-// --- Time parsing ───────────────────────────────────────────────────────────
+// ─── Time parsing ───────────────────────────────────────────────────────────
 
 /**
  * Parse a time string: supports ISO 8601 or unix milliseconds/seconds.

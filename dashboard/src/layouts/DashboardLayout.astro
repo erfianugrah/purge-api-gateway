@@ -254,16 +254,18 @@ const seenSections = new Set<string>();
 
           <div class="flex items-center gap-3">
             <!-- Status indicator -->
-            <div class="flex items-center gap-2">
+            <div id="health-indicator" class="flex items-center gap-2">
               <span class="relative flex h-2 w-2">
                 <span
-                  class="absolute inline-flex h-full w-full animate-ping rounded-full bg-lv-green opacity-75"
+                  id="health-ping"
+                  class="absolute inline-flex h-full w-full animate-ping rounded-full bg-muted-foreground opacity-75"
                 ></span>
                 <span
-                  class="relative inline-flex h-2 w-2 rounded-full bg-lv-green"
+                  id="health-dot"
+                  class="relative inline-flex h-2 w-2 rounded-full bg-muted-foreground"
                 ></span>
               </span>
-              <span class="text-xs text-muted-foreground">HEALTHY</span>
+              <span id="health-text" class="text-xs text-muted-foreground">CHECKING...</span>
             </div>
           </div>
         </header>
@@ -304,6 +306,40 @@ const seenSections = new Set<string>();
           mainEl.scrollTo({ top: 0, behavior: "smooth" });
         });
       }
+    </script>
+
+    <!-- Health check -->
+    <script>
+      (function () {
+        const dot = document.getElementById("health-dot");
+        const ping = document.getElementById("health-ping");
+        const text = document.getElementById("health-text");
+        if (!dot || !ping || !text) return;
+
+        function setStatus(ok: boolean) {
+          const color = ok ? "bg-lv-green" : "bg-lv-red";
+          const remove = ok ? "bg-lv-red" : "bg-lv-green";
+          dot.classList.remove("bg-muted-foreground", remove);
+          dot.classList.add(color);
+          ping.classList.remove("bg-muted-foreground", remove);
+          ping.classList.add(color);
+          text.textContent = ok ? "HEALTHY" : "UNHEALTHY";
+        }
+
+        async function checkHealth() {
+          try {
+            const res = await fetch("/health", { cache: "no-store" });
+            if (!res.ok) { setStatus(false); return; }
+            const data = await res.json();
+            setStatus(data.ok === true);
+          } catch {
+            setStatus(false);
+          }
+        }
+
+        checkHealth();
+        setInterval(checkHealth, 30_000);
+      })();
     </script>
 
     <!-- Mobile nav overlay -->

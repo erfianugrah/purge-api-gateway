@@ -14,6 +14,8 @@ import type { R2Credentials } from './upstream-r2';
 
 // ─── S3 sub-app ─────────────────────────────────────────────────────────────
 
+const VALID_S3_METHODS = new Set(['GET', 'HEAD', 'PUT', 'POST', 'DELETE']);
+
 export const s3App = new Hono<HonoEnv>();
 
 /** Catch-all handler for all S3 operations at /s3/* */
@@ -32,7 +34,6 @@ s3App.all('/*', async (c) => {
 	};
 
 	// 1. Reject unsupported HTTP methods early
-	const VALID_S3_METHODS = new Set(['GET', 'HEAD', 'PUT', 'POST', 'DELETE']);
 	if (!VALID_S3_METHODS.has(c.req.method)) {
 		log.status = 405;
 		log.error = 'method_not_allowed';

@@ -411,6 +411,14 @@ describe('IAM — multi-statement policies', () => {
 });
 
 describe('IAM — expired key', () => {
+	/**
+	 * This test uses real timers (setTimeout) instead of vi.useFakeTimers() because
+	 * Durable Object internal timers (blockConcurrencyWhile, alarm scheduling, etc.)
+	 * are not controllable by Vitest's fake timer implementation. Fake timers would
+	 * freeze the DO's own clock, causing the test to hang or produce incorrect results.
+	 * The 1500ms wait provides adequate margin over the ~1037ms expiry window to
+	 * tolerate CI variance.
+	 */
 	it('expired key -> rejected', async () => {
 		const stub = getStub();
 
@@ -421,7 +429,7 @@ describe('IAM — expired key', () => {
 			expires_in_days: 0.000012,
 		});
 
-		// Wait well past expiry
+		// Wait well past expiry — real timers required, see describe-level comment
 		await new Promise((r) => setTimeout(r, 1500));
 
 		const result = await stub.authorizeFromBody(key.id, ZONE_ID, {

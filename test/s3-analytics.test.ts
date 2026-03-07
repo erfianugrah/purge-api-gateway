@@ -1,6 +1,6 @@
 import { SELF, fetchMock } from 'cloudflare:test';
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
-import { adminHeaders } from './helpers';
+import { adminHeaders, waitForAnalytics } from './helpers';
 import { registerUpstreamR2, createCredential, buildClient, signedFetch, mockR2, s3WildcardPolicy, getR2Origin } from './s3-helpers';
 
 // --- Setup ---
@@ -87,7 +87,7 @@ describe('S3 Analytics — event logging', () => {
 		expect(s3Res.status).toBe(200);
 
 		// Wait for fire-and-forget analytics write
-		await new Promise((r) => setTimeout(r, 500));
+		await waitForAnalytics();
 
 		const res = await SELF.fetch('http://localhost/admin/s3/analytics/events', {
 			headers: adminHeaders(),
@@ -113,7 +113,7 @@ describe('S3 Analytics — event logging', () => {
 
 		await signedFetch(client, 'http://localhost/s3/test-bucket/hello.txt');
 
-		await new Promise((r) => setTimeout(r, 500));
+		await waitForAnalytics();
 
 		const res = await SELF.fetch('http://localhost/admin/s3/analytics/summary', {
 			headers: adminHeaders(),
@@ -131,7 +131,7 @@ describe('S3 Analytics — filtering', () => {
 
 		mockR2('GET', '/', 200, '<?xml version="1.0"?><ListAllMyBucketsResult><Buckets></Buckets></ListAllMyBucketsResult>');
 		await signedFetch(client, 'http://localhost/s3/');
-		await new Promise((r) => setTimeout(r, 500));
+		await waitForAnalytics();
 
 		const res = await SELF.fetch(`http://localhost/admin/s3/analytics/events?credential_id=${accessKeyId}`, {
 			headers: adminHeaders(),

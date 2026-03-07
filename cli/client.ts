@@ -81,16 +81,16 @@ export async function request(
 		});
 
 		const durationMs = Math.round(performance.now() - start);
-		const data = await res.json().catch(async () => {
+		// Read body as text first to avoid double-consuming the stream
+		const raw = await res.text();
+		let data: unknown;
+		try {
+			data = JSON.parse(raw);
+		} catch {
 			// Non-JSON response (e.g. HTML error page) — include truncated body in error shape
-			try {
-				const text = await res.text();
-				const preview = text.length > ERROR_PREVIEW_MAX_LENGTH ? text.slice(0, ERROR_PREVIEW_MAX_LENGTH) + '...' : text;
-				return { success: false, errors: [{ code: res.status, message: preview }] };
-			} catch {
-				return null;
-			}
-		});
+			const preview = raw.length > ERROR_PREVIEW_MAX_LENGTH ? raw.slice(0, ERROR_PREVIEW_MAX_LENGTH) + '...' : raw;
+			data = { success: false, errors: [{ code: res.status, message: preview || `HTTP ${res.status}` }] };
+		}
 		spin.stop();
 		return { status: res.status, headers: res.headers, data, durationMs };
 	} catch (err) {

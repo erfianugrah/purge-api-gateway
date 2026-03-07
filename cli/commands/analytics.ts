@@ -156,7 +156,7 @@ const summary = defineCommand({
 		label('Avg duration', bold(String(s.avg_duration_ms) + 'ms'));
 
 		// Status breakdown
-		const byStatus = s.by_status as Record<string, number>;
+		const byStatus = (s.by_status ?? {}) as Record<string, number>;
 		if (Object.keys(byStatus).length > 0) {
 			console.error('');
 			info('By status:');
@@ -167,7 +167,7 @@ const summary = defineCommand({
 		}
 
 		// Purge type breakdown
-		const byType = s.by_purge_type as Record<string, number>;
+		const byType = (s.by_purge_type ?? {}) as Record<string, number>;
 		if (Object.keys(byType).length > 0) {
 			console.error('');
 			info('By purge type:');

@@ -374,6 +374,8 @@ function ImportAwsDialog({ onImport }: ImportDialogProps) {
 export function S3PolicyBuilder({ value, onChange }: S3PolicyBuilderProps) {
 	const [showJson, setShowJson] = useState(false);
 
+	const ensureId = (stmt: Statement): Statement => (stmt._id ? stmt : { ...stmt, _id: crypto.randomUUID() });
+
 	const updateStatement = useCallback(
 		(index: number, stmt: Statement) => {
 			const next = [...value.statements];
@@ -399,6 +401,7 @@ export function S3PolicyBuilder({ value, onChange }: S3PolicyBuilderProps) {
 			statements: [
 				...value.statements,
 				{
+					_id: crypto.randomUUID(),
 					effect: 'allow',
 					actions: ['s3:*'],
 					resources: ['*'],
@@ -409,16 +412,22 @@ export function S3PolicyBuilder({ value, onChange }: S3PolicyBuilderProps) {
 
 	return (
 		<div className="space-y-3">
-			{value.statements.map((stmt, i) => (
-				<StatementEditor
-					key={i}
-					index={i}
-					statement={stmt}
-					onChange={(s) => updateStatement(i, s)}
-					onRemove={() => removeStatement(i)}
-					canRemove={value.statements.length > 1}
-				/>
-			))}
+			{value.statements.map((rawStmt, i) => {
+				const stmt = ensureId(rawStmt);
+				if (stmt !== rawStmt) {
+					value.statements[i] = stmt;
+				}
+				return (
+					<StatementEditor
+						key={stmt._id}
+						index={i}
+						statement={stmt}
+						onChange={(s) => updateStatement(i, s)}
+						onRemove={() => removeStatement(i)}
+						canRemove={value.statements.length > 1}
+					/>
+				);
+			})}
 
 			<div className="flex items-center gap-2">
 				<Button type="button" variant="outline" size="sm" className="text-xs" onClick={addStatement}>

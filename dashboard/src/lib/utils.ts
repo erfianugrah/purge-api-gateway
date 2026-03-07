@@ -5,6 +5,17 @@ export function cn(...inputs: ClassValue[]) {
 	return twMerge(clsx(inputs));
 }
 
+/** Safely copy text to the clipboard, logging on failure. */
+export async function copyToClipboard(text: string): Promise<boolean> {
+	try {
+		await navigator.clipboard.writeText(text);
+		return true;
+	} catch (e: any) {
+		console.error('Clipboard write failed:', e);
+		return false;
+	}
+}
+
 // ─── Centralized Color Map ───────────────────────────────────────────
 // Lovelace palette — used across charts, badges, and stat cards.
 

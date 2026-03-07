@@ -13,7 +13,7 @@ import { usePagination } from '@/hooks/use-pagination';
 import { TablePagination } from '@/components/TablePagination';
 import { listKeys, createKey, revokeKey, deleteKey, bulkRevokeKeys, bulkDeleteKeys, POLICY_VERSION } from '@/lib/api';
 import type { ApiKey, PolicyDocument } from '@/lib/api';
-import { cn } from '@/lib/utils';
+import { cn, copyToClipboard } from '@/lib/utils';
 import { T } from '@/lib/typography';
 
 // ─── Sort types ─────────────────────────────────────────────────────
@@ -46,6 +46,7 @@ function makeDefaultPolicy(): PolicyDocument {
 		version: POLICY_VERSION,
 		statements: [
 			{
+				_id: crypto.randomUUID(),
 				effect: 'allow',
 				actions: ['purge:*'],
 				resources: ['*'],
@@ -57,6 +58,7 @@ function makeDefaultPolicy(): PolicyDocument {
 function CreateKeyDialog({ onCreated }: CreateKeyDialogProps) {
 	const [open, setOpen] = useState(false);
 	const [name, setName] = useState('');
+	const [expiresInDays, setExpiresInDays] = useState('');
 	const [policy, setPolicy] = useState<PolicyDocument>(() => makeDefaultPolicy());
 	const [creating, setCreating] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -74,10 +76,15 @@ function CreateKeyDialog({ onCreated }: CreateKeyDialogProps) {
 
 		setCreating(true);
 		try {
-			const result = await createKey({ name, policy });
+			const result = await createKey({
+				name,
+				policy,
+				expires_in_days: expiresInDays ? Number(expiresInDays) : undefined,
+			});
 			onCreated(result.key.id);
 			setOpen(false);
 			setName('');
+			setExpiresInDays('');
 			setPolicy(makeDefaultPolicy());
 		} catch (e: any) {
 			setError(e.message ?? 'Failed to create key');
@@ -113,6 +120,17 @@ function CreateKeyDialog({ onCreated }: CreateKeyDialogProps) {
 					</div>
 
 					<div className="space-y-2">
+						<Label className={T.formLabel}>Expires In (days)</Label>
+						<Input
+							type="number"
+							placeholder="Leave empty for no expiry"
+							value={expiresInDays}
+							onChange={(e: any) => setExpiresInDays(e.target.value)}
+							min={1}
+						/>
+					</div>
+
+					<div className="space-y-2">
 						<Label className={T.formLabel}>Policy</Label>
 						<PolicyBuilder value={policy} onChange={setPolicy} />
 					</div>
@@ -140,7 +158,7 @@ function SecretBanner({ secret, onDismiss }: { secret: string; onDismiss: () => 
 	const [copied, setCopied] = useState(false);
 
 	const handleCopy = async () => {
-		await navigator.clipboard.writeText(secret);
+		await copyToClipboard(secret);
 		setCopied(true);
 		setTimeout(() => setCopied(false), 2000);
 	};
@@ -306,6 +324,19 @@ export function KeysPage() {
 		if (sortField !== field) return <ArrowUpDown className="h-3 w-3 opacity-40" />;
 		return sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />;
 	};
+
+	const sortableProps = (field: SortField) => ({
+		role: 'button' as const,
+		tabIndex: 0,
+		'aria-sort': (sortField === field ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none') as 'ascending' | 'descending' | 'none',
+		onClick: () => toggleSort(field),
+		onKeyDown: (e: React.KeyboardEvent) => {
+			if (e.key === 'Enter' || e.key === ' ') {
+				e.preventDefault();
+				toggleSort(field);
+			}
+		},
+	});
 
 	const filteredKeys = useMemo(() => {
 		let result = keys;
@@ -480,35 +511,36 @@ export function KeysPage() {
 												checked={filteredKeys.length > 0 && selectedIds.size === filteredKeys.length}
 												onChange={toggleSelectAll}
 												className="rounded border-border"
+												aria-label="Select all"
 											/>
 										</TableHead>
-										<TableHead className={cn(T.sectionLabel, 'cursor-pointer select-none')} onClick={() => toggleSort('name')}>
+										<TableHead className={cn(T.sectionLabel, 'cursor-pointer select-none')} {...sortableProps('name')}>
 											<span className="flex items-center gap-1">
 												Name <SortIcon field="name" />
 											</span>
 										</TableHead>
-										<TableHead className={cn(T.sectionLabel, 'cursor-pointer select-none')} onClick={() => toggleSort('id')}>
+										<TableHead className={cn(T.sectionLabel, 'cursor-pointer select-none')} {...sortableProps('id')}>
 											<span className="flex items-center gap-1">
 												ID <SortIcon field="id" />
 											</span>
 										</TableHead>
-										<TableHead className={cn(T.sectionLabel, 'cursor-pointer select-none')} onClick={() => toggleSort('zone_id')}>
+										<TableHead className={cn(T.sectionLabel, 'cursor-pointer select-none')} {...sortableProps('zone_id')}>
 											<span className="flex items-center gap-1">
 												Zone <SortIcon field="zone_id" />
 											</span>
 										</TableHead>
 										<TableHead className={T.sectionLabel}>Status</TableHead>
-										<TableHead className={cn(T.sectionLabel, 'cursor-pointer select-none')} onClick={() => toggleSort('created_at')}>
+										<TableHead className={cn(T.sectionLabel, 'cursor-pointer select-none')} {...sortableProps('created_at')}>
 											<span className="flex items-center gap-1">
 												Created <SortIcon field="created_at" />
 											</span>
 										</TableHead>
-										<TableHead className={cn(T.sectionLabel, 'cursor-pointer select-none')} onClick={() => toggleSort('expires_at')}>
+										<TableHead className={cn(T.sectionLabel, 'cursor-pointer select-none')} {...sortableProps('expires_at')}>
 											<span className="flex items-center gap-1">
 												Expires <SortIcon field="expires_at" />
 											</span>
 										</TableHead>
-										<TableHead className={cn(T.sectionLabel, 'cursor-pointer select-none')} onClick={() => toggleSort('created_by')}>
+										<TableHead className={cn(T.sectionLabel, 'cursor-pointer select-none')} {...sortableProps('created_by')}>
 											<span className="flex items-center gap-1">
 												Created By <SortIcon field="created_by" />
 											</span>
@@ -525,6 +557,7 @@ export function KeysPage() {
 													checked={selectedIds.has(k.id)}
 													onChange={() => toggleSelect(k.id)}
 													className="rounded border-border"
+													aria-label="Select row"
 												/>
 											</TableCell>
 											<TableCell className={T.tableRowName}>{k.name}</TableCell>

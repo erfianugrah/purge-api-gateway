@@ -1,23 +1,8 @@
 import { defineCommand } from 'citty';
 import { resolveConfig, request, assertOk } from '../client.js';
-import {
-	success,
-	info,
-	warn,
-	error,
-	bold,
-	dim,
-	cyan,
-	green,
-	red,
-	yellow,
-	table,
-	label,
-	printJson,
-	formatDuration,
-	confirmAction,
-} from '../ui.js';
+import { success, info, warn, error, bold, dim, cyan, table, label, printJson, formatDuration, confirmAction } from '../ui.js';
 import { baseArgs, forceArg } from '../shared-args.js';
+import { makeBulkSubcommand } from '../bulk-helpers.js';
 
 const globalArgs = baseArgs;
 
@@ -41,7 +26,7 @@ const create = defineCommand({
 		},
 		'secret-access-key': {
 			type: 'string',
-			description: 'R2 secret access key ($UPSTREAM_R2_SECRET_ACCESS_KEY)',
+			description: 'R2 secret access key ($UPSTREAM_R2_SECRET_ACCESS_KEY). Prefer env var to avoid shell history exposure',
 		},
 		'r2-endpoint': {
 			type: 'string',
@@ -52,6 +37,10 @@ const create = defineCommand({
 			type: 'string',
 			description: 'Comma-separated bucket names this endpoint covers, or "*" for all',
 			required: true,
+		},
+		validate: {
+			type: 'boolean',
+			description: 'Validate credentials against R2 endpoint on creation',
 		},
 	},
 	async run({ args }) {
@@ -65,13 +54,17 @@ const create = defineCommand({
 
 		const bucketNames = args['bucket-names'] === '*' ? ['*'] : args['bucket-names'].split(',').map((s) => s.trim());
 
-		const body = {
+		const body: Record<string, unknown> = {
 			name: args.name,
 			access_key_id: args['access-key-id'],
 			secret_access_key: secretAccessKey,
 			endpoint: args['r2-endpoint'],
 			bucket_names: bucketNames,
 		};
+
+		if (args.validate) {
+			body.validate = true;
+		}
 
 		const { status, data, durationMs } = await request(config, 'POST', '/admin/upstream-r2', {
 			body,
@@ -93,6 +86,15 @@ const create = defineCommand({
 		console.error('');
 		formatUpstreamR2(result);
 		console.error('');
+
+		const warnings = result.warnings as string[] | undefined;
+		if (warnings && warnings.length > 0) {
+			for (const w of warnings) {
+				warn(w);
+			}
+			console.error('');
+		}
+
 		warn('The secret access key is stored write-only and cannot be retrieved again.');
 		console.error('');
 	},
@@ -219,74 +221,12 @@ const del = defineCommand({
 });
 
 // --- upstream-r2 bulk-delete ---
-const bulkDelete = defineCommand({
-	meta: { name: 'bulk-delete', description: 'Bulk permanently delete multiple R2 endpoints' },
-	args: {
-		...globalArgs,
-		ids: {
-			type: 'string',
-			description: 'Comma-separated list of endpoint IDs (upr2_...)',
-			required: true,
-		},
-		confirm: {
-			type: 'boolean',
-			description: 'Execute the operation (without this flag, runs in dry-run mode)',
-		},
-	},
-	async run({ args }) {
-		const config = resolveConfig(args);
-		const ids = args.ids
-			.split(',')
-			.map((s: string) => s.trim())
-			.filter(Boolean);
-
-		if (ids.length === 0) {
-			error('No endpoint IDs provided');
-			process.exit(1);
-		}
-
-		const body: Record<string, unknown> = {
-			ids,
-			confirm_count: ids.length,
-			dry_run: !args.confirm,
-		};
-
-		const { status, data, durationMs } = await request(config, 'POST', '/admin/upstream-r2/bulk-delete', {
-			body,
-			auth: 'admin',
-			label: args.confirm ? 'Bulk deleting R2 endpoints...' : 'Previewing bulk delete (dry run)...',
-		});
-
-		if (args.json) {
-			assertOk(status, data);
-			printJson(data);
-			return;
-		}
-
-		assertOk(status, data);
-		const result = (data as Record<string, unknown>).result as Record<string, unknown>;
-
-		console.error('');
-		if (result.dry_run) {
-			warn(`Dry run — no changes made ${dim(`(${formatDuration(durationMs)})`)}`);
-			console.error('');
-			const items = result.items as { id: string; current_status: string; would_become: string }[];
-			const rows = items.map((i) => [cyan(i.id), i.current_status, yellow(i.would_become)]);
-			table(['ID', 'Current Status', 'Would Become'], rows);
-			console.error('');
-			info(`Re-run with ${bold('--confirm')} to execute.`);
-		} else {
-			success(`Bulk delete complete ${dim(`(${formatDuration(durationMs)})`)}`);
-			console.error('');
-			const results = result.results as { id: string; status: string }[];
-			const rows = results.map((r) => {
-				const statusLabel = r.status === 'deleted' ? green(r.status) : red(r.status);
-				return [cyan(r.id), statusLabel];
-			});
-			table(['ID', 'Status'], rows);
-		}
-		console.error('');
-	},
+const bulkDelete = makeBulkSubcommand({
+	entityName: 'endpoints',
+	apiPath: '/admin/upstream-r2/bulk-delete',
+	idField: 'ids',
+	action: 'delete',
+	displayField: 'endpoint IDs (upr2_...)',
 });
 
 // --- Formatting helper ---

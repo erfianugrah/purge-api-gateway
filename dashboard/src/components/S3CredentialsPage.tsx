@@ -23,7 +23,7 @@ import {
 	POLICY_VERSION,
 } from '@/lib/api';
 import type { S3Credential, PolicyDocument } from '@/lib/api';
-import { cn } from '@/lib/utils';
+import { cn, copyToClipboard } from '@/lib/utils';
 import { T } from '@/lib/typography';
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -45,6 +45,7 @@ function makeDefaultS3Policy(): PolicyDocument {
 		version: POLICY_VERSION,
 		statements: [
 			{
+				_id: crypto.randomUUID(),
 				effect: 'allow',
 				actions: ['s3:*'],
 				resources: ['*'],
@@ -168,7 +169,7 @@ function SecretBanner({ accessKeyId, secretAccessKey, onDismiss }: SecretBannerP
 	const [copiedField, setCopiedField] = useState<string | null>(null);
 
 	const handleCopy = async (value: string, field: string) => {
-		await navigator.clipboard.writeText(value);
+		await copyToClipboard(value);
 		setCopiedField(field);
 		setTimeout(() => setCopiedField(null), 2000);
 	};
@@ -494,6 +495,7 @@ export function S3CredentialsPage() {
 											checked={credentials.length > 0 && selectedIds.size === credentials.length}
 											onChange={toggleSelectAll}
 											className="rounded border-border"
+											aria-label="Select all"
 										/>
 									</TableHead>
 									<TableHead className={T.sectionLabel}>Name</TableHead>
@@ -515,6 +517,7 @@ export function S3CredentialsPage() {
 												checked={selectedIds.has(c.access_key_id)}
 												onChange={() => toggleSelect(c.access_key_id)}
 												className="rounded border-border"
+												aria-label="Select row"
 											/>
 										</TableCell>
 										<TableCell className={T.tableRowName}>{c.name}</TableCell>

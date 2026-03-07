@@ -283,6 +283,16 @@
                 }
               }
             }
+          },
+          "502": {
+            "description": "No upstream API token registered for zone",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
           }
         }
       }
@@ -315,7 +325,8 @@
                     "minLength": 1
                   },
                   "zone_id": {
-                    "type": "string"
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{32}$"
                   },
                   "policy": {
                     "type": "object",
@@ -495,7 +506,8 @@
             "in": "query",
             "name": "zone_id",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
             }
           },
           {
@@ -670,7 +682,8 @@
             "in": "query",
             "name": "zone_id",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
             }
           }
         ],
@@ -1468,7 +1481,8 @@
             "in": "query",
             "name": "zone_id",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
             }
           }
         ],
@@ -3104,59 +3118,62 @@
   },
   "components": {
     "schemas": {
+      "LeafCondition": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "minLength": 1
+          },
+          "operator": {
+            "type": "string",
+            "enum": [
+              "eq",
+              "ne",
+              "contains",
+              "not_contains",
+              "starts_with",
+              "ends_with",
+              "matches",
+              "not_matches",
+              "in",
+              "not_in",
+              "wildcard",
+              "exists",
+              "not_exists",
+              "lt",
+              "gt",
+              "lte",
+              "gte"
+            ]
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          }
+        },
+        "required": [
+          "field",
+          "operator",
+          "value"
+        ]
+      },
       "__schema0": {
         "anyOf": [
           {
-            "type": "object",
-            "properties": {
-              "field": {
-                "type": "string",
-                "minLength": 1
-              },
-              "operator": {
-                "type": "string",
-                "enum": [
-                  "eq",
-                  "ne",
-                  "contains",
-                  "not_contains",
-                  "starts_with",
-                  "ends_with",
-                  "matches",
-                  "not_matches",
-                  "in",
-                  "not_in",
-                  "wildcard",
-                  "exists",
-                  "not_exists",
-                  "lt",
-                  "gt",
-                  "lte",
-                  "gte"
-                ]
-              },
-              "value": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  {
-                    "type": "boolean"
-                  }
-                ]
-              }
-            },
-            "required": [
-              "field",
-              "operator",
-              "value"
-            ]
+            "$ref": "#/components/schemas/LeafCondition"
           },
           {
             "type": "object",

@@ -223,6 +223,8 @@ function StatementEditor({ index, statement, onChange, onRemove, canRemove }: St
 export function PolicyBuilder({ value, onChange }: PolicyBuilderProps) {
 	const [showJson, setShowJson] = useState(false);
 
+	const ensureId = (stmt: Statement): Statement => (stmt._id ? stmt : { ...stmt, _id: crypto.randomUUID() });
+
 	const updateStatement = useCallback(
 		(index: number, stmt: Statement) => {
 			const next = [...value.statements];
@@ -248,6 +250,7 @@ export function PolicyBuilder({ value, onChange }: PolicyBuilderProps) {
 			statements: [
 				...value.statements,
 				{
+					_id: crypto.randomUUID(),
 					effect: 'allow',
 					actions: ['purge:*'],
 					resources: ['*'],
@@ -258,16 +261,23 @@ export function PolicyBuilder({ value, onChange }: PolicyBuilderProps) {
 
 	return (
 		<div className="space-y-3">
-			{value.statements.map((stmt, i) => (
-				<StatementEditor
-					key={i}
-					index={i}
-					statement={stmt}
-					onChange={(s) => updateStatement(i, s)}
-					onRemove={() => removeStatement(i)}
-					canRemove={value.statements.length > 1}
-				/>
-			))}
+			{value.statements.map((rawStmt, i) => {
+				const stmt = ensureId(rawStmt);
+				if (stmt !== rawStmt) {
+					// Backfill _id on first render without triggering extra re-render
+					value.statements[i] = stmt;
+				}
+				return (
+					<StatementEditor
+						key={stmt._id}
+						index={i}
+						statement={stmt}
+						onChange={(s) => updateStatement(i, s)}
+						onRemove={() => removeStatement(i)}
+						canRemove={value.statements.length > 1}
+					/>
+				);
+			})}
 
 			<div className="flex items-center gap-2">
 				<Button type="button" variant="outline" size="sm" className="text-xs" onClick={addStatement}>

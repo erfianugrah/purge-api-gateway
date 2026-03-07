@@ -10,8 +10,11 @@ describe('S3 proxy — account-level rate limiting', () => {
 		await registerUpstreamR2();
 	});
 
-	afterEach(() => {
+	afterEach(async () => {
 		fetchMock.assertNoPendingInterceptors();
+		// Ensure rate-limit config is always reset, even if assertions fail
+		await SELF.fetch('http://localhost/admin/config/s3_rps', { method: 'DELETE', headers: adminHeaders() });
+		await SELF.fetch('http://localhost/admin/config/s3_burst', { method: 'DELETE', headers: adminHeaders() });
 	});
 
 	it('config defaults include s3_rps and s3_burst', async () => {
@@ -35,10 +38,6 @@ describe('S3 proxy — account-level rate limiting', () => {
 		const putData = await putRes.json<any>();
 		expect(putData.result.config.s3_rps).toBe(50);
 		expect(putData.result.config.s3_burst).toBe(100);
-
-		// Reset
-		await SELF.fetch('http://localhost/admin/config/s3_rps', { method: 'DELETE', headers: adminHeaders() });
-		await SELF.fetch('http://localhost/admin/config/s3_burst', { method: 'DELETE', headers: adminHeaders() });
 	});
 
 	it('returns 429 SlowDown with Retry-After when rate limit exhausted', async () => {
@@ -65,10 +64,6 @@ describe('S3 proxy — account-level rate limiting', () => {
 		expect(body).toContain('SlowDown');
 		expect(body).toContain('Please reduce your request rate');
 		expect(res2.headers.get('Retry-After')).toBeTruthy();
-
-		// Reset config
-		await SELF.fetch('http://localhost/admin/config/s3_rps', { method: 'DELETE', headers: adminHeaders() });
-		await SELF.fetch('http://localhost/admin/config/s3_burst', { method: 'DELETE', headers: adminHeaders() });
 	});
 
 	it('rate-limited response is valid S3 XML with correct content type', async () => {
@@ -95,9 +90,5 @@ describe('S3 proxy — account-level rate limiting', () => {
 		expect(body).toContain('<Error>');
 		expect(body).toContain('<Code>SlowDown</Code>');
 		expect(body).toContain('<RequestId>');
-
-		// Reset config
-		await SELF.fetch('http://localhost/admin/config/s3_rps', { method: 'DELETE', headers: adminHeaders() });
-		await SELF.fetch('http://localhost/admin/config/s3_burst', { method: 'DELETE', headers: adminHeaders() });
 	});
 });

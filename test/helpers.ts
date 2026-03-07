@@ -94,6 +94,13 @@ export function mockUpstream500() {
 		});
 }
 
+// ─── Analytics flush helper ─────────────────────────────────────────────────
+
+/** Wait for fire-and-forget analytics writes dispatched via waitUntil() to flush to D1. */
+export async function waitForAnalytics(ms = 500): Promise<void> {
+	await new Promise((r) => setTimeout(r, ms));
+}
+
 // ─── Policy factories ───────────────────────────────────────────────────────
 
 const POLICY_VERSION = '2025-01-01' as const;

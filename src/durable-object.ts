@@ -67,8 +67,9 @@ export class Gatekeeper extends DurableObject<Env> {
 	private upstreamR2!: UpstreamR2Manager;
 	private configManager!: ConfigManager;
 
-	/** Per-key rate limit buckets. Lazily created when a key with custom limits is first used. */
+	/** Per-key rate limit buckets. Lazily created when a key with custom limits is first used. Capped at MAX_KEY_BUCKETS. */
 	private keyBuckets = new Map<string, { bulk: TokenBucket; single: TokenBucket }>();
+	private static readonly MAX_KEY_BUCKETS = 1024;
 
 	/** DO-level request collapsing. */
 	private collapser = new RequestCollapser<PurgeResult>();
@@ -183,6 +184,11 @@ export class Gatekeeper extends DurableObject<Env> {
 
 		let buckets = this.keyBuckets.get(keyId);
 		if (!buckets) {
+			// Evict oldest entry if at capacity to prevent unbounded memory growth
+			if (this.keyBuckets.size >= Gatekeeper.MAX_KEY_BUCKETS) {
+				const oldest = this.keyBuckets.keys().next().value!;
+				this.keyBuckets.delete(oldest);
+			}
 			const gwConfig = this.configManager.getConfig(this.env);
 			buckets = {
 				bulk: new TokenBucket(key.bulk_rate ?? gwConfig.bulk_rate, key.bulk_bucket ?? gwConfig.bulk_bucket_size),
@@ -323,7 +329,12 @@ export class Gatekeeper extends DurableObject<Env> {
 		return bucket.consume(count);
 	}
 
-	async getRateLimitInfo(rateClass: RateClass) {
+	async getRateLimitInfo(rateClass: RateClass): Promise<{
+		remaining: number;
+		secondsUntilRefill: number;
+		bucketSize: number;
+		rate: number;
+	}> {
 		const bucket = rateClass === 'single' ? this.singleBucket : this.bulkBucket;
 		return {
 			remaining: bucket.getRemaining(),
