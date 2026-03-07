@@ -20,9 +20,8 @@ export class TokenBucket {
 	consume(count: number): ConsumeResult {
 		this.refill();
 
-		if (count <= 0) {
-			return { allowed: true, remaining: Math.floor(this.tokens), retryAfterSec: 0 };
-		}
+		// Guard: treat zero/negative as 1 to prevent rate-limit bypass
+		if (count <= 0) count = 1;
 
 		if (this.tokens >= count) {
 			this.tokens -= count;

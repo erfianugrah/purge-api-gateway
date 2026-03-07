@@ -61,18 +61,8 @@ export class UpstreamTokenManager {
 		// Migration: remove vestigial "revoked" column from old schema.
 		const cols = queryAll<{ name: string }>(this.sql, `PRAGMA table_info('upstream_tokens')`);
 		if (cols.some((c) => c.name === 'revoked')) {
-			this.sql.exec(`DROP TABLE upstream_tokens`);
-			this.sql.exec(`
-				CREATE TABLE upstream_tokens (
-					id TEXT PRIMARY KEY,
-					name TEXT NOT NULL,
-					token TEXT NOT NULL,
-					token_preview TEXT NOT NULL,
-					zone_ids TEXT NOT NULL,
-					created_at INTEGER NOT NULL,
-					created_by TEXT
-				);
-			`);
+			console.log(JSON.stringify({ migration: 'upstream_tokens', action: 'drop_column_revoked', ts: new Date().toISOString() }));
+			this.sql.exec(`ALTER TABLE upstream_tokens DROP COLUMN revoked`);
 		}
 	}
 

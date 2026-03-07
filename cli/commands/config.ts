@@ -101,7 +101,7 @@ const set = defineCommand({
 
 		const updates: Record<string, number> = {};
 		for (const { key, value } of pairs) {
-			if (isNaN(value) || value <= 0) {
+			if (!Number.isFinite(value) || value <= 0) {
 				error(`Invalid value for "${key}": must be a positive number`);
 				process.exit(1);
 			}

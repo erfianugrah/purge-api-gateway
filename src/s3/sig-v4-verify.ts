@@ -41,9 +41,12 @@ export async function verifySigV4(
 		return { valid: false, error: 'Malformed Authorization header' };
 	}
 
-	// 2. Validate region
+	// 2. Validate region and service
 	if (!VALID_REGIONS.has(parsed.region)) {
 		return { valid: false, error: `Invalid region: ${parsed.region}` };
+	}
+	if (parsed.service !== 's3') {
+		return { valid: false, error: `Invalid service in credential scope: ${parsed.service}` };
 	}
 
 	// 3. Validate timestamp (x-amz-date header)
@@ -125,9 +128,12 @@ export async function verifySigV4Presigned(
 		return { valid: false, error: 'Malformed presigned URL parameters' };
 	}
 
-	// 2. Validate region
+	// 2. Validate region and service
 	if (!VALID_REGIONS.has(parsed.region)) {
 		return { valid: false, error: `Invalid region: ${parsed.region}` };
+	}
+	if (parsed.service !== 's3') {
+		return { valid: false, error: `Invalid service in credential scope: ${parsed.service}` };
 	}
 
 	// 3. Validate timestamp and expiry

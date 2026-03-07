@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
-import { fetchMock } from 'cloudflare:test';
+import { SELF, fetchMock } from 'cloudflare:test';
 import { createCredential, buildClient, signedFetch, mockR2, getR2Origin, registerUpstreamR2, s3WildcardPolicy } from './s3-helpers';
 
 describe('S3 proxy — bucket-level operations', () => {
@@ -158,112 +158,43 @@ describe('S3 proxy — bucket-level operations', () => {
 	});
 });
 
-describe('S3 proxy — R2 unsupported operations (forwarded to R2)', () => {
-	beforeAll(async () => {
-		fetchMock.activate();
-		fetchMock.disableNetConnect();
-		await registerUpstreamR2();
-	});
+describe('S3 proxy — R2 unsupported operations (rejected early with 501)', () => {
+	// These operations are rejected before auth, so no credentials needed
 
-	afterEach(() => {
-		fetchMock.assertNoPendingInterceptors();
-	});
-
-	it('GetBucketVersioning -> forwarded (R2 returns 200 stub)', async () => {
-		const { accessKeyId, secretAccessKey } = await createCredential(s3WildcardPolicy());
-		const client = buildClient(accessKeyId, secretAccessKey);
-
-		fetchMock
-			.get(getR2Origin())
-			.intercept({ method: 'GET', path: /^\/test-bucket\?versioning/ })
-			.reply(200, '<VersioningConfiguration/>');
-
-		const res = await signedFetch(client, 'http://localhost/s3/test-bucket?versioning');
-		expect(res.status).toBe(200);
-	});
-
-	it('PutBucketVersioning -> forwarded (R2 returns 501)', async () => {
-		const { accessKeyId, secretAccessKey } = await createCredential(s3WildcardPolicy());
-		const client = buildClient(accessKeyId, secretAccessKey);
-
-		fetchMock
-			.get(getR2Origin())
-			.intercept({ method: 'PUT', path: /^\/test-bucket\?versioning/ })
-			.reply(501, '<Error><Code>NotImplemented</Code></Error>');
-
-		const res = await signedFetch(client, 'http://localhost/s3/test-bucket?versioning', {
-			method: 'PUT',
-			body: '<VersioningConfiguration><Status>Enabled</Status></VersioningConfiguration>',
-		});
+	it('GetBucketVersioning -> 501 NotImplemented', async () => {
+		const res = await SELF.fetch('http://localhost/s3/test-bucket?versioning');
 		expect(res.status).toBe(501);
-	});
-
-	it('GetBucketAcl -> forwarded (R2 returns 200 stub)', async () => {
-		const { accessKeyId, secretAccessKey } = await createCredential(s3WildcardPolicy());
-		const client = buildClient(accessKeyId, secretAccessKey);
-
-		fetchMock
-			.get(getR2Origin())
-			.intercept({ method: 'GET', path: /^\/test-bucket\?acl/ })
-			.reply(200, '<AccessControlPolicy><Owner><ID>owner</ID></Owner></AccessControlPolicy>');
-
-		const res = await signedFetch(client, 'http://localhost/s3/test-bucket?acl');
-		expect(res.status).toBe(200);
-	});
-
-	it('GetObjectTagging -> forwarded', async () => {
-		const { accessKeyId, secretAccessKey } = await createCredential(s3WildcardPolicy());
-		const client = buildClient(accessKeyId, secretAccessKey);
-
-		fetchMock
-			.get(getR2Origin())
-			.intercept({ method: 'GET', path: /^\/test-bucket\/key\.txt\?tagging/ })
-			.reply(200, '<Tagging><TagSet></TagSet></Tagging>');
-
-		const res = await signedFetch(client, 'http://localhost/s3/test-bucket/key.txt?tagging');
-		expect(res.status).toBe(200);
-	});
-
-	it('DeleteObjectTagging -> forwarded (R2 returns 204)', async () => {
-		const { accessKeyId, secretAccessKey } = await createCredential(s3WildcardPolicy());
-		const client = buildClient(accessKeyId, secretAccessKey);
-
-		fetchMock
-			.get(getR2Origin())
-			.intercept({ method: 'DELETE', path: /^\/test-bucket\/key\.txt\?tagging/ })
-			.reply(204, '');
-
-		const res = await signedFetch(client, 'http://localhost/s3/test-bucket/key.txt?tagging', {
-			method: 'DELETE',
-		});
-		expect(res.status).toBe(204);
-	});
-
-	it('GetBucketPolicy -> forwarded', async () => {
-		const { accessKeyId, secretAccessKey } = await createCredential(s3WildcardPolicy());
-		const client = buildClient(accessKeyId, secretAccessKey);
-
-		fetchMock
-			.get(getR2Origin())
-			.intercept({ method: 'GET', path: /^\/test-bucket\?policy/ })
-			.reply(501, '<Error><Code>NotImplemented</Code></Error>');
-
-		const res = await signedFetch(client, 'http://localhost/s3/test-bucket?policy');
-		expect(res.status).toBe(501);
-	});
-
-	it('GetBucketTagging -> forwarded (R2 returns 404 NoSuchTagSet)', async () => {
-		const { accessKeyId, secretAccessKey } = await createCredential(s3WildcardPolicy());
-		const client = buildClient(accessKeyId, secretAccessKey);
-
-		fetchMock
-			.get(getR2Origin())
-			.intercept({ method: 'GET', path: /^\/test-bucket\?tagging/ })
-			.reply(404, '<Error><Code>NoSuchTagSet</Code></Error>');
-
-		const res = await signedFetch(client, 'http://localhost/s3/test-bucket?tagging');
-		expect(res.status).toBe(404);
 		const body = await res.text();
-		expect(body).toContain('NoSuchTagSet');
+		expect(body).toContain('NotImplemented');
+	});
+
+	it('PutBucketVersioning -> 501 NotImplemented', async () => {
+		const res = await SELF.fetch('http://localhost/s3/test-bucket?versioning', { method: 'PUT' });
+		expect(res.status).toBe(501);
+	});
+
+	it('GetBucketAcl -> 501 NotImplemented', async () => {
+		const res = await SELF.fetch('http://localhost/s3/test-bucket?acl');
+		expect(res.status).toBe(501);
+	});
+
+	it('GetObjectTagging -> 501 NotImplemented', async () => {
+		const res = await SELF.fetch('http://localhost/s3/test-bucket/key.txt?tagging');
+		expect(res.status).toBe(501);
+	});
+
+	it('DeleteObjectTagging -> 501 NotImplemented', async () => {
+		const res = await SELF.fetch('http://localhost/s3/test-bucket/key.txt?tagging', { method: 'DELETE' });
+		expect(res.status).toBe(501);
+	});
+
+	it('GetBucketPolicy -> 501 NotImplemented', async () => {
+		const res = await SELF.fetch('http://localhost/s3/test-bucket?policy');
+		expect(res.status).toBe(501);
+	});
+
+	it('GetBucketTagging -> 501 NotImplemented', async () => {
+		const res = await SELF.fetch('http://localhost/s3/test-bucket?tagging');
+		expect(res.status).toBe(501);
 	});
 });

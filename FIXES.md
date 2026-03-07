@@ -45,7 +45,7 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
   - `viewer`: GET on `/admin/keys`, `/admin/analytics`, `/admin/config`
   - `operator`: POST/DELETE on `/admin/keys`, `/admin/s3/credentials`, purge keys
   - `admin`: everything including `/admin/config`, `/admin/upstream-*`
-- **Status**: `[ ]`
+- **Status**: `[ ]` (deferred — separate PR, new feature)
 
 ### 1.2 `[LOW]` `created_by` is self-reported for non-SSO users
 
@@ -76,7 +76,7 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
   defense-in-depth, not a vulnerability fix.
 - **Fix**: Add `if (parsed.service !== 's3') return { valid: false, error: 'Invalid service in credential scope' };`
   after the region validation (lines 45 and 129). Simple one-liner, no risk.
-- **Status**: `[ ]`
+- **Status**: `[x]`
 
 ### 2.2 `[MEDIUM]` Silent DeleteObjects body parse failure bypasses per-key auth
 
@@ -96,7 +96,7 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
       return s3XmlError('MalformedXML', 'The XML you provided was not well-formed', 400);
   }
   ```
-- **Status**: `[ ]`
+- **Status**: `[x]`
 
 ### 2.3 `[LOW]` No body size limit on DeleteObjects XML
 
@@ -107,7 +107,7 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
   Cloudflare Workers have a 128 MB memory limit per request.
 - **Fix**: Check `Content-Length` header before reading. Reject bodies >1 MB (generous for
   1000 keys). Or cap parsed keys at 1000 and reject the rest.
-- **Status**: `[ ]`
+- **Status**: `[x]`
 
 ### 2.4 `[MEDIUM]` Unknown HTTP methods fall through to read operations
 
@@ -117,7 +117,7 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
   forwarding to R2 of methods that should be rejected early.
 - **Fix**: Return a `405 MethodNotAllowed` for unrecognized HTTP methods instead of
   falling through to a default operation.
-- **Status**: `[ ]`
+- **Status**: `[x]`
 
 ### 2.5 `[LOW]` `isR2Supported()` defined but never called
 
@@ -127,7 +127,7 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
   which returns a 501, wasting IAM evaluation, re-signing, and a round-trip.
 - **Fix**: Add `if (!isR2Supported(op.name)) return s3XmlError('NotImplemented', ...)` in
   `src/s3/routes.ts` before the auth check, or after auth but before forwarding.
-- **Status**: `[ ]`
+- **Status**: `[x]`
 
 ### 2.6 `[LOW]` No TTL on S3 re-signing `AwsClient` cache
 
@@ -136,7 +136,7 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
   If upstream R2 credentials are rotated, the cached `AwsClient` uses the old secret until
   isolate death.
 - **Fix**: Add a `cachedAt` timestamp and check TTL (e.g. 5 minutes) on lookup.
-- **Status**: `[ ]`
+- **Status**: `[x]`
 
 ---
 
@@ -155,7 +155,7 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
   needed for it.
 - **Fix**: Add after line 174: `if (jwt.payload.iat > now + 60) return null;` (60s skew
   tolerance).
-- **Status**: `[ ]`
+- **Status**: `[x]`
 
 ---
 
@@ -170,7 +170,7 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
   max depth.
 - **Fix**: Add a `depth` parameter to both `evaluateCondition` and `validateCondition`.
   Reject policies with nesting >20 levels at validation time.
-- **Status**: `[ ]`
+- **Status**: `[x]`
 
 ### 4.2 `[MEDIUM]` ReDoS protection is basic — no runtime execution timeout
 
@@ -217,7 +217,7 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
   - Account-level: token bucket in the DO for S3 ops (like purge has `bulkBucket`/`singleBucket`)
   - Per-credential: configurable per-credential rate limits (like purge per-key limits)
   - At minimum: a global S3 requests-per-second guard
-- **Status**: `[ ]`
+- **Status**: `[ ]` (deferred — separate PR, new feature)
 
 ### 5.2 `[MEDIUM]` `consume(count <= 0)` allows rate-limit bypass via RPC
 
@@ -228,7 +228,7 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
   validation.
 - **Fix**: Add `if (count <= 0) count = 1;` at the top of `consume()` in `token-bucket.ts`,
   or validate in the DO's `consume` RPC method.
-- **Status**: `[ ]`
+- **Status**: `[x]`
 
 ### 5.3 `[MEDIUM]` `rebuildBuckets()` refills all rate-limit buckets on config change
 
@@ -238,7 +238,7 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
   exhaust tokens → trigger config change → all buckets refill.
 - **Fix**: Only rebuild buckets when rate-limit config values actually changed. Or preserve
   remaining tokens proportionally: `newBucket.setRemaining(oldBucket.getRemaining() * newSize / oldSize)`.
-- **Status**: `[ ]`
+- **Status**: `[x]`
 
 ---
 
@@ -309,7 +309,7 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
   	}
   });
   ```
-- **Status**: `[ ]`
+- **Status**: `[x]`
 
 ### 7.2 `[HIGH]` No top-level try/catch on admin route handlers
 
@@ -318,7 +318,7 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
   error propagates as an unstructured 500.
 - **Fix**: Either add try/catch to each handler, or add a Hono `onError` handler on the
   `adminApp` that catches all errors and returns structured JSON.
-- **Status**: `[ ]`
+- **Status**: `[x]`
 
 ### 7.3 `[MEDIUM]` Header case mismatch in 429 detection
 
@@ -333,7 +333,7 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
   actually correct for the current implementation, but fragile if header naming changes.
 - **Fix**: Use a consistent lowercase key throughout, or check with a case-insensitive
   helper.
-- **Status**: `[ ]`
+- **Status**: `[x]`
 
 ### 7.4 `[LOW]` `responseDetail` captured but never included in console log for S3
 
@@ -342,7 +342,7 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
   but it's not in the `console.log(JSON.stringify(log))` structured log. Operators using
   `wrangler tail` miss it.
 - **Fix**: Add `log.responseDetail = responseDetail;` before the console.log call.
-- **Status**: `[ ]`
+- **Status**: `[x]`
 
 ---
 
@@ -358,7 +358,7 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
   2. Add a migration version flag (e.g. a `schema_version` table) so the migration only
      runs once and is explicit.
   3. At minimum, add a `console.warn` log so operators know data was dropped.
-- **Status**: `[ ]`
+- **Status**: `[x]`
 
 ---
 
@@ -380,7 +380,7 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
   	initialized.add(db);
   }
   ```
-- **Status**: `[ ]`
+- **Status**: `[ ]` (deferred — needs instance-level flag instead of module-level; conflicts with test pool shared state)
 
 ### 9.2 `[LOW]` `resolveForBucket` queries all rows every cache miss
 
@@ -409,7 +409,7 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
 - **Problem**: `Number("Infinity")` passes the `isNaN(value) || value <= 0` check.
   `Number.isFinite(Infinity)` returns `false`.
 - **Fix**: Change check to `!Number.isFinite(value) || value <= 0`.
-- **Status**: `[ ]`
+- **Status**: `[x]`
 
 ### 10.2 `[HIGH]` No timeout on CLI HTTP requests
 
@@ -417,7 +417,7 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
 - **Problem**: `fetch()` has no `AbortSignal` or timeout. A hung server causes the CLI to
   hang indefinitely.
 - **Fix**: Add `signal: AbortSignal.timeout(30_000)` to the fetch options.
-- **Status**: `[ ]`
+- **Status**: `[x]`
 
 ### 10.3 `[MEDIUM]` Non-JSON error responses silently swallowed
 
@@ -426,7 +426,7 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
   error page). The user gets a generic error with no diagnostic info.
 - **Fix**: On JSON parse failure, fall back to `res.text()` and include the raw body
   (truncated) in the error message.
-- **Status**: `[ ]`
+- **Status**: `[x]`
 
 ### 10.4 `[LOW]` Unused imports in CLI commands
 
@@ -492,7 +492,7 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
   handles it, but if an exception occurs between the while loop and reset, `lastIndex`
   stays non-zero. A function-scoped regex would be inherently safe.
 - **Fix**: Move the regex inside the function, or remove the `g` flag and use `matchAll`.
-- **Status**: `[ ]`
+- **Status**: `[x]`
 
 ---
 

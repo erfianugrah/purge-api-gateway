@@ -69,10 +69,20 @@ export async function request(
 			method,
 			headers,
 			body: opts?.body ? JSON.stringify(opts.body) : undefined,
+			signal: AbortSignal.timeout(30_000),
 		});
 
 		const durationMs = Math.round(performance.now() - start);
-		const data = await res.json().catch(() => null);
+		const data = await res.json().catch(async () => {
+			// Non-JSON response (e.g. HTML error page) — include truncated body in error shape
+			try {
+				const text = await res.text();
+				const preview = text.length > 200 ? text.slice(0, 200) + '...' : text;
+				return { success: false, errors: [{ code: res.status, message: preview }] };
+			} catch {
+				return null;
+			}
+		});
 		spin.stop();
 		return { status: res.status, headers: res.headers, data, durationMs };
 	} catch (err) {

@@ -13,6 +13,12 @@ import type { HonoEnv } from '../types';
 
 export const adminApp = new Hono<HonoEnv>();
 
+/** Global error handler — catches unhandled throws and returns structured JSON. */
+adminApp.onError((err, c) => {
+	console.error(JSON.stringify({ route: 'admin', error: err.message, ts: new Date().toISOString() }));
+	return c.json({ success: false, errors: [{ code: 500, message: 'Internal server error' }] }, 500);
+});
+
 adminApp.use('*', adminAuth);
 adminApp.route('/keys', adminKeysApp);
 adminApp.route('/analytics', adminAnalyticsApp);

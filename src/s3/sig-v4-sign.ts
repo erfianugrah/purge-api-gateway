@@ -6,12 +6,15 @@ import type { R2Credentials } from './upstream-r2';
 
 /** Lazily-initialized AwsClient instances keyed by access_key_id. Bounded to prevent unbounded growth. */
 const MAX_CLIENT_CACHE_SIZE = 64;
-const clientCache = new Map<string, AwsClient>();
+const CLIENT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes — ensures rotated R2 credentials take effect
+const clientCache = new Map<string, { client: AwsClient; cachedAt: number }>();
 
 /** Get or create the AwsClient for a given set of R2 credentials. */
 function getClient(creds: R2Credentials): AwsClient {
 	const existing = clientCache.get(creds.accessKeyId);
-	if (existing) return existing;
+	if (existing && Date.now() - existing.cachedAt < CLIENT_CACHE_TTL_MS) {
+		return existing.client;
+	}
 
 	// Evict oldest entry if cache is full
 	if (clientCache.size >= MAX_CLIENT_CACHE_SIZE) {
@@ -25,7 +28,7 @@ function getClient(creds: R2Credentials): AwsClient {
 		service: 's3',
 		region: 'auto',
 	});
-	clientCache.set(creds.accessKeyId, client);
+	clientCache.set(creds.accessKeyId, { client, cachedAt: Date.now() });
 	return client;
 }
 

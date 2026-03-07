@@ -54,8 +54,7 @@ describe('TokenBucket', () => {
 		// Advance 3 seconds → refill = 3 * 10 = 30 tokens → 50 + 30 = 80
 		vi.advanceTimersByTime(3000);
 
-		const result = bucket.consume(0);
-		expect(result.remaining).toBe(80);
+		expect(bucket.getRemaining()).toBe(80);
 	});
 
 	it('refill does not exceed bucket size', () => {
@@ -98,22 +97,22 @@ describe('TokenBucket', () => {
 		expect(remaining).toBe(30);
 	});
 
-	it('zero-count consume → always allowed', () => {
+	it('zero-count consume → treated as 1 to prevent bypass', () => {
 		const bucket = new TokenBucket(10, 100);
 		bucket.consume(100); // drain
 		const result = bucket.consume(0);
-		expect(result.allowed).toBe(true);
-		// remaining = 0 (no refill since same instant)
+		// count=0 is promoted to 1, but bucket is drained so it's denied
+		expect(result.allowed).toBe(false);
 		expect(result.remaining).toBe(0);
-		expect(result.retryAfterSec).toBe(0);
 	});
 
-	it('negative count consume → treated as zero, always allowed', () => {
+	it('negative count consume → treated as 1 to prevent bypass', () => {
 		const bucket = new TokenBucket(10, 100);
 		bucket.consume(50); // 50 remaining
 		const result = bucket.consume(-5);
+		// count=-5 is promoted to 1, consumes 1 token
 		expect(result.allowed).toBe(true);
-		expect(result.remaining).toBe(50);
+		expect(result.remaining).toBe(49);
 	});
 
 	it("negative elapsed time (clock skew) -- clamp to 0, don't add negative tokens", () => {

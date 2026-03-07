@@ -32,17 +32,14 @@ export function escapeXml(s: string): string {
 
 // ─── DeleteObjects XML parsing ──────────────────────────────────────────────
 
-/** Regex to extract <Key>...</Key> elements from DeleteObjects XML body. */
-const DELETE_KEY_RE = /<Key>([^<]+)<\/Key>/g;
-
 /** Parse object keys from a DeleteObjects XML body. */
 export function parseDeleteObjectKeys(xml: string): string[] {
+	const re = /<Key>([^<]+)<\/Key>/g;
 	const keys: string[] = [];
 	let match: RegExpExecArray | null;
-	while ((match = DELETE_KEY_RE.exec(xml)) !== null) {
+	while ((match = re.exec(xml)) !== null) {
 		keys.push(decodeXmlEntities(match[1]));
 	}
-	DELETE_KEY_RE.lastIndex = 0;
 	return keys;
 }
 

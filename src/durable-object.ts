@@ -100,14 +100,25 @@ export class Gatekeeper extends DurableObject<Env> {
 		});
 	}
 
-	/** Rebuild token buckets from the current config. Called after config changes. */
+	/** Rebuild token buckets from the current config. Only recreates if rate-limit values changed. */
 	private rebuildBuckets(): void {
 		const gwConfig = this.configManager.getConfig(this.env);
 		const rlConfig = ConfigManager.toRateLimitConfig(gwConfig);
-		this.bulkBucket = new TokenBucket(rlConfig.bulk.rate, rlConfig.bulk.bucketSize);
-		this.singleBucket = new TokenBucket(rlConfig.single.rate, rlConfig.single.bucketSize);
-		// Clear per-key buckets so they pick up new account defaults
-		this.keyBuckets.clear();
+
+		// Only rebuild if rate-limit config actually changed — preserves remaining tokens otherwise
+		const bulkChanged = this.bulkBucket.rate !== rlConfig.bulk.rate || this.bulkBucket.bucketSize !== rlConfig.bulk.bucketSize;
+		const singleChanged = this.singleBucket.rate !== rlConfig.single.rate || this.singleBucket.bucketSize !== rlConfig.single.bucketSize;
+
+		if (bulkChanged) {
+			this.bulkBucket = new TokenBucket(rlConfig.bulk.rate, rlConfig.bulk.bucketSize);
+		}
+		if (singleChanged) {
+			this.singleBucket = new TokenBucket(rlConfig.single.rate, rlConfig.single.bucketSize);
+		}
+		if (bulkChanged || singleChanged) {
+			// Clear per-key buckets so they pick up new account defaults
+			this.keyBuckets.clear();
+		}
 	}
 
 	// ─── Purge with DO-level collapsing ─────────────────────────────────

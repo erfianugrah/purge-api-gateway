@@ -169,9 +169,10 @@ export async function validateAccessJwt(request: Request, teamName: string, aud:
 	);
 	if (!valid) return null;
 
-	// Check expiry
+	// Check expiry and issued-at
 	const now = Math.floor(Date.now() / 1000);
 	if (jwt.payload.exp < now) return null;
+	if (jwt.payload.iat > now + 60) return null; // 60s skew tolerance for future iat
 
 	// Check issuer
 	const expectedIss = `https://${teamName}.cloudflareaccess.com`;

@@ -45,11 +45,11 @@ export class IamManager {
 			);
 		`);
 
-		// Migration: old schema had zone_id NOT NULL — recreate if needed.
-		// Safe because CREATE TABLE IF NOT EXISTS won't alter existing columns.
+		// Migration: old schema had zone_id NOT NULL — migrate data safely.
 		const info = queryAll<{ notnull: number }>(this.sql, `SELECT "notnull" FROM pragma_table_info('api_keys') WHERE name = 'zone_id'`);
 		if (info.length > 0 && info[0].notnull === 1) {
-			this.sql.exec(`DROP TABLE api_keys`);
+			console.log(JSON.stringify({ migration: 'api_keys', action: 'zone_id_nullable', ts: new Date().toISOString() }));
+			this.sql.exec(`ALTER TABLE api_keys RENAME TO api_keys_old`);
 			this.sql.exec(`
 				CREATE TABLE api_keys (
 					id TEXT PRIMARY KEY,
@@ -66,6 +66,8 @@ export class IamManager {
 					created_by TEXT
 				);
 			`);
+			this.sql.exec(`INSERT INTO api_keys SELECT * FROM api_keys_old`);
+			this.sql.exec(`DROP TABLE api_keys_old`);
 		}
 	}
 

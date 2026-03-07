@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { verifySigV4, verifySigV4Presigned, parseAuthHeader, isPresignedUrl, parsePresignedParams } from './sig-v4-verify';
 import { forwardToR2 } from './sig-v4-sign';
-import { detectOperation, buildConditionFields } from './operations';
+import { detectOperation, buildConditionFields, isR2Supported } from './operations';
 import { logS3Event } from './analytics';
 import { s3XmlError, parseDeleteObjectKeys } from './xml';
 import { getStub } from '../do-stub';
@@ -29,13 +29,32 @@ s3App.all('/*', async (c) => {
 		ts: new Date().toISOString(),
 	};
 
-	// 1. Detect the S3 operation
+	// 1. Reject unsupported HTTP methods early
+	const VALID_S3_METHODS = new Set(['GET', 'HEAD', 'PUT', 'POST', 'DELETE']);
+	if (!VALID_S3_METHODS.has(c.req.method)) {
+		log.status = 405;
+		log.error = 'method_not_allowed';
+		log.durationMs = Date.now() - start;
+		console.log(JSON.stringify(log));
+		return s3XmlError('MethodNotAllowed', `The specified method is not allowed: ${c.req.method}`, 405);
+	}
+
+	// 2. Detect the S3 operation
 	const op = detectOperation(c.req.method, s3Path, url.searchParams, c.req.raw.headers);
 	log.operation = op.name;
 	log.bucket = op.bucket;
 	log.key = op.key;
 
-	// 2. Verify Sig V4 — supports both header-based and presigned URL auth
+	// Reject operations not supported by R2 early — saves IAM eval and upstream round-trip
+	if (!isR2Supported(op.name)) {
+		log.status = 501;
+		log.error = 'not_implemented';
+		log.durationMs = Date.now() - start;
+		console.log(JSON.stringify(log));
+		return s3XmlError('NotImplemented', `The operation ${op.name} is not supported.`, 501);
+	}
+
+	// 3. Verify Sig V4 — supports both header-based and presigned URL auth
 	const stub = getStub(c.env);
 	const presigned = isPresignedUrl(url.searchParams);
 	log.authMode = presigned ? 'presigned' : 'header';
@@ -162,6 +181,15 @@ s3App.all('/*', async (c) => {
 	let deleteObjectsBody: string | undefined;
 	if (op.name === 'DeleteObjects' && op.bucket) {
 		try {
+			// AWS limits DeleteObjects to 1,000 keys; reject oversized bodies (>1 MB is generous)
+			const contentLength = Number(c.req.header('content-length') ?? 0);
+			if (contentLength > 1_048_576) {
+				log.status = 400;
+				log.error = 'body_too_large';
+				log.durationMs = Date.now() - start;
+				console.log(JSON.stringify(log));
+				return s3XmlError('MaxMessageLengthExceeded', 'Your request body exceeds the maximum allowed size.', 400);
+			}
 			deleteObjectsBody = await c.req.text();
 			const keys = parseDeleteObjectKeys(deleteObjectsBody);
 			if (keys.length > 0) {
@@ -196,7 +224,12 @@ s3App.all('/*', async (c) => {
 				log.deleteKeys = keys.length;
 			}
 		} catch {
-			// If body parsing fails, fall through with bucket-level auth
+			// Malformed XML — reject per AWS S3 API spec
+			log.status = 400;
+			log.error = 'malformed_xml';
+			log.durationMs = Date.now() - start;
+			console.log(JSON.stringify(log));
+			return s3XmlError('MalformedXML', 'The XML you provided was not well-formed or did not validate against our published schema.', 400);
 		}
 	}
 
@@ -247,6 +280,7 @@ s3App.all('/*', async (c) => {
 			}
 		}
 
+		if (responseDetail) log.responseDetail = responseDetail;
 		console.log(JSON.stringify(log));
 
 		// Fire-and-forget analytics write

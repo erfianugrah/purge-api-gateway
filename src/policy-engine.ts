@@ -89,14 +89,18 @@ function matchesResource(patterns: string[], resource: string): boolean {
 
 // ─── Condition evaluation ───────────────────────────────────────────────────
 
+/** Maximum nesting depth for compound conditions (any/all/not). */
+const MAX_CONDITION_DEPTH = 20;
+
 /**
  * Evaluate a condition (leaf or compound) against request fields.
  */
-function evaluateCondition(cond: Condition, fields: Record<string, string | boolean>): boolean {
+function evaluateCondition(cond: Condition, fields: Record<string, string | boolean>, depth = 0): boolean {
+	if (depth > MAX_CONDITION_DEPTH) return false; // exceed depth → deny
 	if (isLeafCondition(cond)) return evaluateLeaf(cond, fields);
-	if (isAnyCondition(cond)) return cond.any.some((c) => evaluateCondition(c, fields));
-	if (isAllCondition(cond)) return cond.all.every((c) => evaluateCondition(c, fields));
-	if (isNotCondition(cond)) return !evaluateCondition(cond.not, fields);
+	if (isAnyCondition(cond)) return cond.any.some((c) => evaluateCondition(c, fields, depth + 1));
+	if (isAllCondition(cond)) return cond.all.every((c) => evaluateCondition(c, fields, depth + 1));
+	if (isNotCondition(cond)) return !evaluateCondition(cond.not, fields, depth + 1);
 	return false;
 }
 
@@ -295,7 +299,12 @@ const VALID_OPERATORS = new Set<string>([
 /** Patterns known to cause catastrophic backtracking. */
 const DANGEROUS_REGEX = /(\([^)]*[+*][^)]*\))[+*]|\(\?[<=!]/;
 
-function validateCondition(cond: unknown, path: string, errors: PolicyValidationError[]): void {
+function validateCondition(cond: unknown, path: string, errors: PolicyValidationError[], depth = 0): void {
+	if (depth > MAX_CONDITION_DEPTH) {
+		errors.push({ path, message: `Condition nesting exceeds maximum depth of ${MAX_CONDITION_DEPTH}` });
+		return;
+	}
+
 	if (!cond || typeof cond !== 'object') {
 		errors.push({ path, message: 'Condition must be a non-null object' });
 		return;
@@ -309,7 +318,7 @@ function validateCondition(cond: unknown, path: string, errors: PolicyValidation
 			errors.push({ path: `${path}.any`, message: 'any must be a non-empty array' });
 		} else {
 			for (let i = 0; i < c.any.length; i++) {
-				validateCondition(c.any[i], `${path}.any[${i}]`, errors);
+				validateCondition(c.any[i], `${path}.any[${i}]`, errors, depth + 1);
 			}
 		}
 		return;
@@ -320,7 +329,7 @@ function validateCondition(cond: unknown, path: string, errors: PolicyValidation
 			errors.push({ path: `${path}.all`, message: 'all must be a non-empty array' });
 		} else {
 			for (let i = 0; i < c.all.length; i++) {
-				validateCondition(c.all[i], `${path}.all[${i}]`, errors);
+				validateCondition(c.all[i], `${path}.all[${i}]`, errors, depth + 1);
 			}
 		}
 		return;
@@ -330,7 +339,7 @@ function validateCondition(cond: unknown, path: string, errors: PolicyValidation
 		if (!c.not || typeof c.not !== 'object') {
 			errors.push({ path: `${path}.not`, message: 'not must be a non-null condition object' });
 		} else {
-			validateCondition(c.not, `${path}.not`, errors);
+			validateCondition(c.not, `${path}.not`, errors, depth + 1);
 		}
 		return;
 	}
