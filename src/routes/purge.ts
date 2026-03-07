@@ -211,39 +211,55 @@ purgeRoute.post('/v1/zones/:zoneId/purge_cache', async (c) => {
 export function classifyPurge(body: PurgeBody, limits: { singleMaxOps: number; bulkMaxOps: number }): ParsedPurgeRequest {
 	const { singleMaxOps, bulkMaxOps } = limits;
 
-	if (body.files && body.files.length > 0) {
-		if (body.files.length > singleMaxOps) {
-			throw new Error(`files array has ${body.files.length} items, max is ${singleMaxOps}`);
-		}
-		const target = summarizeFiles(body.files);
-		return { type: 'url', rateClass: 'single', tokens: body.files.length, target, body };
+	// Count which purge types are present — reject mixed bodies (matches CF API behavior)
+	const hasFiles = body.files && body.files.length > 0;
+	const hasPurgeEverything = 'purge_everything' in body;
+	const hasHosts = body.hosts && body.hosts.length > 0;
+	const hasTags = body.tags && body.tags.length > 0;
+	const hasPrefixes = body.prefixes && body.prefixes.length > 0;
+	const typeCount = [hasFiles, hasPurgeEverything, hasHosts, hasTags, hasPrefixes].filter(Boolean).length;
+
+	if (typeCount > 1) {
+		throw new Error('Request body must contain exactly one purge type (files, hosts, tags, prefixes, or purge_everything)');
 	}
 
-	if ('purge_everything' in body) {
+	if (hasFiles) {
+		if (body.files!.length > singleMaxOps) {
+			throw new Error(`files array has ${body.files!.length} items, max is ${singleMaxOps}`);
+		}
+		const target = summarizeFiles(body.files!);
+		return { type: 'url', rateClass: 'single', tokens: body.files!.length, target, body };
+	}
+
+	if (hasPurgeEverything) {
 		if (body.purge_everything !== true) {
 			throw new Error('purge_everything must be boolean true');
 		}
 		return { type: 'everything', rateClass: 'bulk', tokens: 1, target: '*', body };
 	}
 
-	// Hosts, tags, prefixes — all bulk rate-limited. Pick the dominant type.
-	const hostCount = body.hosts?.length ?? 0;
-	const tagCount = body.tags?.length ?? 0;
-	const prefixCount = body.prefixes?.length ?? 0;
-	const totalOps = hostCount + tagCount + prefixCount;
-
-	if (totalOps > 0) {
-		if (totalOps > bulkMaxOps) {
-			throw new Error(`Total bulk operations is ${totalOps}, max per request is ${bulkMaxOps}`);
+	if (hasHosts) {
+		if (body.hosts!.length > bulkMaxOps) {
+			throw new Error(`hosts array has ${body.hosts!.length} items, max per request is ${bulkMaxOps}`);
 		}
-		// Determine the specific type — if mixed, pick the first non-empty
-		let type: 'host' | 'tag' | 'prefix' = 'host';
-		if (hostCount > 0) type = 'host';
-		else if (tagCount > 0) type = 'tag';
-		else if (prefixCount > 0) type = 'prefix';
-
 		const target = summarizeBulk(body);
-		return { type, rateClass: 'bulk', tokens: 1, target, body };
+		return { type: 'host', rateClass: 'bulk', tokens: 1, target, body };
+	}
+
+	if (hasTags) {
+		if (body.tags!.length > bulkMaxOps) {
+			throw new Error(`tags array has ${body.tags!.length} items, max per request is ${bulkMaxOps}`);
+		}
+		const target = summarizeBulk(body);
+		return { type: 'tag', rateClass: 'bulk', tokens: 1, target, body };
+	}
+
+	if (hasPrefixes) {
+		if (body.prefixes!.length > bulkMaxOps) {
+			throw new Error(`prefixes array has ${body.prefixes!.length} items, max per request is ${bulkMaxOps}`);
+		}
+		const target = summarizeBulk(body);
+		return { type: 'prefix', rateClass: 'bulk', tokens: 1, target, body };
 	}
 
 	throw new Error('Request body must contain one of: files, hosts, tags, prefixes, or purge_everything');

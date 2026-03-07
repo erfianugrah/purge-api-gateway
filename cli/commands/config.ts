@@ -1,22 +1,9 @@
 import { defineCommand } from 'citty';
 import { resolveConfig, request, assertOk } from '../client.js';
-import { success, info, warn, error, bold, dim, cyan, green, yellow, table, label, printJson, formatDuration } from '../ui.js';
+import { success, info, error, bold, dim, cyan, green, yellow, table, label, printJson, formatDuration } from '../ui.js';
+import { baseArgs } from '../shared-args.js';
 
-/** Shared args across config commands. */
-const globalArgs = {
-	endpoint: {
-		type: 'string' as const,
-		description: 'Gateway URL ($GATEKEEPER_URL)',
-	},
-	'admin-key': {
-		type: 'string' as const,
-		description: 'Admin key ($GATEKEEPER_ADMIN_KEY)',
-	},
-	json: {
-		type: 'boolean' as const,
-		description: 'Output raw JSON',
-	},
-};
+const globalArgs = baseArgs;
 
 // --- config get ---
 const get = defineCommand({

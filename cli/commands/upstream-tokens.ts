@@ -1,22 +1,25 @@
 import { defineCommand } from 'citty';
 import { resolveConfig, request, assertOk } from '../client.js';
-import { success, info, warn, error, bold, dim, cyan, green, red, yellow, table, label, printJson, formatDuration } from '../ui.js';
+import {
+	success,
+	info,
+	warn,
+	error,
+	bold,
+	dim,
+	cyan,
+	green,
+	red,
+	yellow,
+	table,
+	label,
+	printJson,
+	formatDuration,
+	confirmAction,
+} from '../ui.js';
+import { baseArgs, forceArg } from '../shared-args.js';
 
-/** Shared args across upstream-tokens commands. */
-const globalArgs = {
-	endpoint: {
-		type: 'string' as const,
-		description: 'Gateway URL ($GATEKEEPER_URL)',
-	},
-	'admin-key': {
-		type: 'string' as const,
-		description: 'Admin key ($GATEKEEPER_ADMIN_KEY)',
-	},
-	json: {
-		type: 'boolean' as const,
-		description: 'Output raw JSON',
-	},
-};
+const globalArgs = baseArgs;
 
 // --- upstream-tokens create ---
 const create = defineCommand({
@@ -171,32 +174,14 @@ const del = defineCommand({
 			description: 'The upstream token ID to delete (upt_...)',
 			required: true,
 		},
-		force: {
-			type: 'boolean',
-			alias: ['f'],
-			description: 'Skip confirmation prompt',
-		},
+		...forceArg,
 	},
 	async run({ args }) {
 		const config = resolveConfig(args);
 		const tokenId = args.id;
 
-		if (!args.force && process.stdin.isTTY) {
-			warn(`You are about to delete upstream token ${bold(tokenId)}. This cannot be undone.`);
-			process.stderr.write(`  Continue? [y/N] `);
-
-			const confirmed = await new Promise<boolean>((resolve) => {
-				process.stdin.setRawMode?.(true);
-				process.stdin.resume();
-				process.stdin.once('data', (chunk) => {
-					process.stdin.setRawMode?.(false);
-					process.stdin.pause();
-					const char = chunk.toString().trim().toLowerCase();
-					process.stderr.write(char + '\n');
-					resolve(char === 'y');
-				});
-			});
-
+		if (!args.force) {
+			const confirmed = await confirmAction(`You are about to delete upstream token ${bold(tokenId)}. This cannot be undone.`);
 			if (!confirmed) {
 				info('Aborted.');
 				return;

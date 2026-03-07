@@ -332,3 +332,22 @@ export function parsePolicy(input: string): unknown {
 		process.exit(1);
 	}
 }
+
+/** Prompt user for y/N confirmation. Returns true if confirmed, false otherwise. Skips if not TTY. */
+export async function confirmAction(message: string): Promise<boolean> {
+	if (!process.stdin.isTTY) return true;
+	warn(message);
+	process.stderr.write(`  Continue? [y/N] `);
+
+	return new Promise<boolean>((resolve) => {
+		process.stdin.setRawMode?.(true);
+		process.stdin.resume();
+		process.stdin.once('data', (chunk) => {
+			process.stdin.setRawMode?.(false);
+			process.stdin.pause();
+			const char = chunk.toString().trim().toLowerCase();
+			process.stderr.write(char + '\n');
+			resolve(char === 'y');
+		});
+	});
+}

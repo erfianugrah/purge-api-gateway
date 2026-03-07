@@ -1,27 +1,9 @@
 import { defineCommand } from 'citty';
 import { resolveConfig, resolveZoneId, request, assertOk } from '../client.js';
 import { success, info, bold, dim, cyan, green, red, yellow, gray, table, label, printJson, formatDuration, symbols } from '../ui.js';
+import { zoneArgs } from '../shared-args.js';
 
-/** Shared args across analytics commands */
-const globalArgs = {
-	endpoint: {
-		type: 'string' as const,
-		description: 'Gateway URL ($GATEKEEPER_URL)',
-	},
-	'admin-key': {
-		type: 'string' as const,
-		description: 'Admin key ($GATEKEEPER_ADMIN_KEY)',
-	},
-	'zone-id': {
-		type: 'string' as const,
-		alias: ['z'] as string[],
-		description: 'Cloudflare zone ID ($GATEKEEPER_ZONE_ID)',
-	},
-	json: {
-		type: 'boolean' as const,
-		description: 'Output raw JSON',
-	},
-};
+const globalArgs = zoneArgs;
 
 // --- analytics events ---
 const events = defineCommand({

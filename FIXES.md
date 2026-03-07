@@ -55,7 +55,7 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
 - **Verification**: Code trace — `identity?.email ?? (typeof raw.created_by === 'string' ? raw.created_by : undefined)`.
 - **Fix**: Document that `created_by` is unverified for non-SSO users. Optionally prefix
   with `unverified:` when not from a JWT.
-- **Status**: `[ ]`
+- **Status**: `[x]` — added `resolveCreatedBy()` in `admin-helpers.ts`; non-SSO values prefixed `unverified:`
 
 ---
 
@@ -284,7 +284,7 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
   (`/^[a-f0-9]{32}$/`), so invalid zone IDs in tokens are never matched — but the data is
   polluted.
 - **Fix**: Validate each zone_id matches `/^[a-f0-9]{32}$/` or is `"*"`.
-- **Status**: `[ ]`
+- **Status**: `[x]` — validation added in `admin-upstream-tokens.ts`; rejects with 400 listing invalid IDs
 
 ---
 
@@ -380,7 +380,7 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
   	initialized.add(db);
   }
   ```
-- **Status**: `[ ]` (deferred — needs instance-level flag instead of module-level; conflicts with test pool shared state)
+- **Status**: `[-]` — DO-side `initTables()` already runs once in constructor's `blockConcurrencyWhile`; D1-side uses idempotent `CREATE TABLE IF NOT EXISTS` (negligible overhead, caching conflicts with test pool shared state)
 
 ### 9.2 `[LOW]` `resolveForBucket` queries all rows every cache miss
 
@@ -432,7 +432,7 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
 
 - **File**: `cli/commands/config.ts` (imports `warn`), others import unused `symbols`/`gray`
 - **Fix**: Remove unused imports.
-- **Status**: `[ ]`
+- **Status**: `[x]` — removed `warn` from config.ts, `gray`/`label` from keys.ts, `cyan`/`green`/`yellow` from purge.ts, `symbols` from s3-credentials.ts
 
 ---
 
@@ -445,20 +445,20 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
 - **Problem**: Nearly identical bulk-body parsing. `admin-keys.ts` already parameterizes
   with `idField` — the others should reuse it.
 - **Fix**: Extract `parseBulkBody` to a shared module (e.g. `src/routes/helpers.ts`).
-- **Status**: `[ ]`
+- **Status**: `[x]` — extracted to `src/routes/admin-helpers.ts`, removed from 4 route files
 
 ### 11.2 `[LOW]` `MAX_BULK_ITEMS = 100` defined independently in 4 files
 
 - **Files**: Same as 11.1.
 - **Fix**: Export from shared module.
-- **Status**: `[ ]`
+- **Status**: `[x]` — exported from `src/routes/admin-helpers.ts`
 
 ### 11.3 `[MEDIUM]` CLI: `globalArgs` duplicated in every command file
 
 - **Files**: All `cli/commands/*.ts` files.
 - **Problem**: `endpoint`, `admin-key`, `json` args are identical in every command.
 - **Fix**: Extract to `cli/shared-args.ts`.
-- **Status**: `[ ]`
+- **Status**: `[x]` — extracted `baseArgs`, `zoneArgs` to `cli/shared-args.ts`; updated 6 command files
 
 ### 11.4 `[MEDIUM]` CLI: Confirmation prompt copy-pasted 5 times
 
@@ -466,14 +466,14 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
   `cli/commands/s3-credentials.ts:235-245`, `cli/commands/upstream-r2.ts:200-210`,
   `cli/commands/upstream-tokens.ts:188-198`
 - **Fix**: Extract to `confirm()` utility in `cli/ui.ts`.
-- **Status**: `[ ]`
+- **Status**: `[x]` — extracted `confirmAction()` to `cli/ui.ts` + `forceArg` to `cli/shared-args.ts`; updated 5 command files
 
 ### 11.5 `[LOW]` `queryAll` lives in `crypto.ts`
 
 - **File**: `src/crypto.ts:28`
 - **Problem**: A SQL utility in a module named `crypto` is misleading.
 - **Fix**: Move to `src/db-utils.ts` or `src/sql.ts`.
-- **Status**: `[ ]`
+- **Status**: `[x]` — moved to `src/sql.ts`; updated 4 importers
 
 ### 11.6 `[LOW]` Purge body `classifyPurge` vs `purgeBodyToContexts` scope mismatch
 
@@ -483,7 +483,7 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
   So IAM authorizes a broader scope than what is actually sent upstream. Not exploitable
   (authorized scope > execution scope), but wastes policy evaluation.
 - **Fix**: Either reject mixed bodies (like CF API does) or align the two functions.
-- **Status**: `[ ]`
+- **Status**: `[x]` — `classifyPurge` now rejects mixed purge bodies with 400 (matches CF API behavior); per-type limits enforced individually
 
 ### 11.7 `[LOW]` Global regex `g` flag on `DELETE_KEY_RE`
 

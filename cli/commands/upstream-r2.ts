@@ -1,22 +1,25 @@
 import { defineCommand } from 'citty';
 import { resolveConfig, request, assertOk } from '../client.js';
-import { success, info, warn, error, bold, dim, cyan, green, red, yellow, table, label, printJson, formatDuration } from '../ui.js';
+import {
+	success,
+	info,
+	warn,
+	error,
+	bold,
+	dim,
+	cyan,
+	green,
+	red,
+	yellow,
+	table,
+	label,
+	printJson,
+	formatDuration,
+	confirmAction,
+} from '../ui.js';
+import { baseArgs, forceArg } from '../shared-args.js';
 
-/** Shared args across upstream-r2 commands. */
-const globalArgs = {
-	endpoint: {
-		type: 'string' as const,
-		description: 'Gateway URL ($GATEKEEPER_URL)',
-	},
-	'admin-key': {
-		type: 'string' as const,
-		description: 'Admin key ($GATEKEEPER_ADMIN_KEY)',
-	},
-	json: {
-		type: 'boolean' as const,
-		description: 'Output raw JSON',
-	},
-};
+const globalArgs = baseArgs;
 
 // --- upstream-r2 create ---
 const create = defineCommand({
@@ -183,32 +186,14 @@ const del = defineCommand({
 			description: 'The R2 endpoint ID to delete (upr2_...)',
 			required: true,
 		},
-		force: {
-			type: 'boolean',
-			alias: ['f'],
-			description: 'Skip confirmation prompt',
-		},
+		...forceArg,
 	},
 	async run({ args }) {
 		const config = resolveConfig(args);
 		const endpointId = args.id;
 
-		if (!args.force && process.stdin.isTTY) {
-			warn(`You are about to delete R2 endpoint ${bold(endpointId)}. This cannot be undone.`);
-			process.stderr.write(`  Continue? [y/N] `);
-
-			const confirmed = await new Promise<boolean>((resolve) => {
-				process.stdin.setRawMode?.(true);
-				process.stdin.resume();
-				process.stdin.once('data', (chunk) => {
-					process.stdin.setRawMode?.(false);
-					process.stdin.pause();
-					const char = chunk.toString().trim().toLowerCase();
-					process.stderr.write(char + '\n');
-					resolve(char === 'y');
-				});
-			});
-
+		if (!args.force) {
+			const confirmed = await confirmAction(`You are about to delete R2 endpoint ${bold(endpointId)}. This cannot be undone.`);
 			if (!confirmed) {
 				info('Aborted.');
 				return;

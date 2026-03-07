@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { validatePolicy } from '../policy-engine';
 import { getStub } from '../do-stub';
+import { parseBulkBody, resolveCreatedBy } from './admin-helpers';
 import { queryS3Events, queryS3Summary } from '../s3/analytics';
 import type { S3AnalyticsQuery } from '../s3/analytics';
 import type { HonoEnv } from '../types';
@@ -74,7 +75,7 @@ adminS3App.post('/credentials', async (c) => {
 	const req: CreateS3CredentialRequest = {
 		name: raw.name as string,
 		policy: raw.policy as PolicyDocument,
-		created_by: identity?.email ?? (typeof raw.created_by === 'string' ? raw.created_by : undefined),
+		created_by: resolveCreatedBy(identity, raw.created_by),
 		expires_in_days: typeof raw.expires_in_days === 'number' ? raw.expires_in_days : undefined,
 	};
 
@@ -178,12 +179,10 @@ adminS3App.delete('/credentials/:id', async (c) => {
 
 // ─── Bulk revoke credentials ────────────────────────────────────────────────
 
-const MAX_BULK_ITEMS = 100;
-
 adminS3App.post('/credentials/bulk-revoke', async (c) => {
 	const log: Record<string, unknown> = { route: 'admin.bulkRevokeS3Credentials', ts: new Date().toISOString() };
 
-	const body = await parseBulkS3Body(c);
+	const body = await parseBulkBody(c, 'access_key_ids');
 	if (body instanceof Response) return body;
 
 	const { ids, dryRun } = body;
@@ -210,7 +209,7 @@ adminS3App.post('/credentials/bulk-revoke', async (c) => {
 adminS3App.post('/credentials/bulk-delete', async (c) => {
 	const log: Record<string, unknown> = { route: 'admin.bulkDeleteS3Credentials', ts: new Date().toISOString() };
 
-	const body = await parseBulkS3Body(c);
+	const body = await parseBulkBody(c, 'access_key_ids');
 	if (body instanceof Response) return body;
 
 	const { ids, dryRun } = body;
@@ -231,41 +230,6 @@ adminS3App.post('/credentials/bulk-delete', async (c) => {
 	console.log(JSON.stringify(log));
 	return c.json({ success: true, result });
 });
-
-/** Parse and validate a bulk S3 credential operation request body. */
-async function parseBulkS3Body(c: {
-	req: { json: <T>() => Promise<T> };
-	json: (data: unknown, status: number) => Response;
-}): Promise<{ ids: string[]; dryRun: boolean } | Response> {
-	let raw: Record<string, unknown>;
-	try {
-		raw = await c.req.json<Record<string, unknown>>();
-	} catch {
-		return c.json({ success: false, errors: [{ code: 400, message: 'Invalid JSON body' }] }, 400);
-	}
-
-	const ids = raw.access_key_ids;
-	if (!Array.isArray(ids) || ids.length === 0 || !ids.every((id) => typeof id === 'string')) {
-		return c.json({ success: false, errors: [{ code: 400, message: 'access_key_ids must be a non-empty array of strings' }] }, 400);
-	}
-
-	if (ids.length > MAX_BULK_ITEMS) {
-		return c.json({ success: false, errors: [{ code: 400, message: `Maximum ${MAX_BULK_ITEMS} items per request` }] }, 400);
-	}
-
-	if (typeof raw.confirm_count !== 'number' || raw.confirm_count !== ids.length) {
-		return c.json(
-			{
-				success: false,
-				errors: [{ code: 400, message: `confirm_count must equal access_key_ids array length (${ids.length})` }],
-			},
-			400,
-		);
-	}
-
-	const dryRun = raw.dry_run === true;
-	return { ids: ids as string[], dryRun };
-}
 
 // ─── S3 Analytics: events ───────────────────────────────────────────────────
 
