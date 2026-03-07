@@ -1,5 +1,5 @@
-import { SELF, fetchMock } from 'cloudflare:test';
-import { describe, it, expect, beforeAll, afterEach } from 'vitest';
+import { SELF, env, fetchMock } from 'cloudflare:test';
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import { adminHeaders, ADMIN_KEY, UPSTREAM_HOST } from './helpers';
 
 // --- Tests ---
@@ -421,5 +421,125 @@ describe('Upstream tokens — validate on registration', () => {
 		const data = await res.json<any>();
 		expect(data.success).toBe(true);
 		expect(data.warnings).toBeUndefined();
+	});
+});
+
+// --- Resolution logic (Fix #1 — ORDER BY created_at DESC, exact vs wildcard) ---
+
+describe('Upstream tokens — resolution', () => {
+	// --- Constants ---
+	const ZONE_A = 'aaaa000011112222333344445555aaaa';
+	const ZONE_B = 'bbbb000011112222333344445555bbbb';
+	const ZONE_UNREGISTERED = 'cccc000011112222333344445555cccc';
+
+	const TOKEN_EXACT_A = 'cf-exact-a-token-1234567890abcdef1234567890abcd';
+	const TOKEN_WILDCARD = 'cf-wildcard-token-1234567890abcdef1234567890ab';
+	const TOKEN_NEWER_A = 'cf-newer-a-token-1234567890abcdef1234567890abcd';
+
+	/** Get the DO stub for direct RPC calls. */
+	function getStub() {
+		return env.GATEKEEPER.get(env.GATEKEEPER.idFromName('account'));
+	}
+
+	/** Register an upstream token and return its ID. */
+	async function registerToken(name: string, token: string, zoneIds: string[]): Promise<string> {
+		const res = await SELF.fetch('http://localhost/admin/upstream-tokens', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({ name, token, zone_ids: zoneIds }),
+		});
+		const data = await res.json<any>();
+		if (!data.success) throw new Error(`registerToken failed: ${JSON.stringify(data.errors)}`);
+		return data.result.id;
+	}
+
+	/** Delete an upstream token by ID. */
+	async function deleteToken(id: string): Promise<void> {
+		await SELF.fetch(`http://localhost/admin/upstream-tokens/${id}`, {
+			method: 'DELETE',
+			headers: adminHeaders(),
+		});
+	}
+
+	it('exact zone match -> returns matching token', async () => {
+		const id = await registerToken('exact-match', TOKEN_EXACT_A, [ZONE_A]);
+		try {
+			const resolved = await getStub().resolveUpstreamToken(ZONE_A);
+			expect(resolved).toBe(TOKEN_EXACT_A);
+		} finally {
+			await deleteToken(id);
+		}
+	});
+
+	it('wildcard token -> returned for any zone', async () => {
+		const id = await registerToken('wildcard', TOKEN_WILDCARD, ['*']);
+		try {
+			const resolved = await getStub().resolveUpstreamToken(ZONE_B);
+			expect(resolved).toBe(TOKEN_WILDCARD);
+		} finally {
+			await deleteToken(id);
+		}
+	});
+
+	it('exact match preferred over wildcard', async () => {
+		const wcId = await registerToken('res-wildcard', TOKEN_WILDCARD, ['*']);
+		const exactId = await registerToken('res-exact-a', TOKEN_EXACT_A, [ZONE_A]);
+		try {
+			// ZONE_A should resolve to the exact token, not the wildcard
+			const resolvedA = await getStub().resolveUpstreamToken(ZONE_A);
+			expect(resolvedA).toBe(TOKEN_EXACT_A);
+
+			// ZONE_B has no exact match, so should fall back to the wildcard
+			const resolvedB = await getStub().resolveUpstreamToken(ZONE_B);
+			expect(resolvedB).toBe(TOKEN_WILDCARD);
+		} finally {
+			await deleteToken(exactId);
+			await deleteToken(wcId);
+		}
+	});
+
+	it('newest token wins when multiple claim the same zone', async () => {
+		vi.useFakeTimers();
+		try {
+			vi.setSystemTime(new Date('2025-01-01T00:00:00Z'));
+			const olderId = await registerToken('older-a', TOKEN_EXACT_A, [ZONE_A]);
+
+			vi.setSystemTime(new Date('2025-06-01T00:00:00Z'));
+			const newerId = await registerToken('newer-a', TOKEN_NEWER_A, [ZONE_A]);
+
+			const resolved = await getStub().resolveUpstreamToken(ZONE_A);
+			expect(resolved).toBe(TOKEN_NEWER_A);
+
+			await deleteToken(newerId);
+			await deleteToken(olderId);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('no match -> returns null', async () => {
+		const resolved = await getStub().resolveUpstreamToken(ZONE_UNREGISTERED);
+		expect(resolved).toBeNull();
+	});
+
+	it('deleted token -> no longer resolved', async () => {
+		const id = await registerToken('delete-resolve', TOKEN_EXACT_A, [ZONE_A]);
+		const before = await getStub().resolveUpstreamToken(ZONE_A);
+		expect(before).toBe(TOKEN_EXACT_A);
+
+		await deleteToken(id);
+		const after = await getStub().resolveUpstreamToken(ZONE_A);
+		expect(after).toBeNull();
+	});
+
+	it('multi-zone token covers all listed zones', async () => {
+		const id = await registerToken('multi-zone-resolve', TOKEN_EXACT_A, [ZONE_A, ZONE_B]);
+		try {
+			expect(await getStub().resolveUpstreamToken(ZONE_A)).toBe(TOKEN_EXACT_A);
+			expect(await getStub().resolveUpstreamToken(ZONE_B)).toBe(TOKEN_EXACT_A);
+			expect(await getStub().resolveUpstreamToken(ZONE_UNREGISTERED)).toBeNull();
+		} finally {
+			await deleteToken(id);
+		}
 	});
 });

@@ -20,6 +20,7 @@ import {
 	deleteS3Credential,
 	bulkRevokeS3Credentials,
 	bulkDeleteS3Credentials,
+	POLICY_VERSION,
 } from '@/lib/api';
 import type { S3Credential, PolicyDocument } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -41,7 +42,7 @@ function formatDate(epoch: number): string {
 
 function makeDefaultS3Policy(): PolicyDocument {
 	return {
-		version: '2025-01-01',
+		version: POLICY_VERSION,
 		statements: [
 			{
 				effect: 'allow',

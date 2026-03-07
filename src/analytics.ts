@@ -6,6 +6,7 @@
  */
 
 import { PURGE_EVENTS_TABLE_SQL, PURGE_EVENTS_INDEX_ZONE_SQL, PURGE_EVENTS_INDEX_KEY_SQL } from './schema';
+import { DEFAULT_ANALYTICS_LIMIT, MAX_ANALYTICS_LIMIT } from './constants';
 
 export interface PurgeEvent {
 	key_id: string;
@@ -116,7 +117,7 @@ export async function queryEvents(db: D1Database, query: AnalyticsQuery): Promis
 		params.push(query.until);
 	}
 
-	const limit = Math.min(query.limit ?? 100, 1000);
+	const limit = Math.min(query.limit ?? DEFAULT_ANALYTICS_LIMIT, MAX_ANALYTICS_LIMIT);
 	const where = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '';
 	const sql = `SELECT * FROM purge_events${where} ORDER BY created_at DESC LIMIT ?`;
 	params.push(limit);

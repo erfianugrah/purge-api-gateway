@@ -3,9 +3,11 @@ import { verifySigV4, verifySigV4Presigned, parseAuthHeader, isPresignedUrl, par
 import { forwardToR2 } from './sig-v4-sign';
 import { detectOperation, buildConditionFields, isR2Supported } from './operations';
 import { logS3Event } from './analytics';
+import type { S3Event } from './analytics';
 import { s3XmlError, parseDeleteObjectKeys } from './xml';
 import { getStub } from '../do-stub';
 import { extractRequestFields } from '../request-fields';
+import { MAX_DELETE_OBJECTS_BODY_BYTES, MAX_LOG_VALUE_LENGTH, AUDIT_CREATED_BY_API_KEY } from '../constants';
 import type { HonoEnv } from '../types';
 import type { RequestContext } from '../policy-types';
 import type { R2Credentials } from './upstream-r2';
@@ -183,7 +185,7 @@ s3App.all('/*', async (c) => {
 		try {
 			// AWS limits DeleteObjects to 1,000 keys; reject oversized bodies (>1 MB is generous)
 			const contentLength = Number(c.req.header('content-length') ?? 0);
-			if (contentLength > 1_048_576) {
+			if (contentLength > MAX_DELETE_OBJECTS_BODY_BYTES) {
 				log.status = 400;
 				log.error = 'body_too_large';
 				log.durationMs = Date.now() - start;
@@ -287,7 +289,7 @@ s3App.all('/*', async (c) => {
 		if (r2Response.status >= 400) {
 			try {
 				const errorBody = await r2Response.clone().text();
-				responseDetail = errorBody.length > 4096 ? errorBody.slice(0, 4096) : errorBody;
+				responseDetail = errorBody.length > MAX_LOG_VALUE_LENGTH ? errorBody.slice(0, MAX_LOG_VALUE_LENGTH) : errorBody;
 			} catch {
 				// Body not readable — skip
 			}
@@ -298,19 +300,8 @@ s3App.all('/*', async (c) => {
 
 		// Fire-and-forget analytics write
 		if (c.env.ANALYTICS_DB) {
-			c.executionCtx.waitUntil(
-				logS3Event(c.env.ANALYTICS_DB, {
-					credential_id: accessKeyId,
-					operation: op.name,
-					bucket: op.bucket || null,
-					key: op.key || null,
-					status: r2Response.status,
-					duration_ms: Date.now() - start,
-					response_detail: responseDetail,
-					created_by: 'via API key',
-					created_at: Date.now(),
-				}),
-			);
+			const event = buildS3Event(accessKeyId, op.name, op.bucket, op.key, r2Response.status, Date.now() - start, responseDetail);
+			c.executionCtx.waitUntil(logS3Event(c.env.ANALYTICS_DB, event));
 		}
 
 		// Stream the response back — preserve all headers from R2
@@ -336,21 +327,35 @@ s3App.all('/*', async (c) => {
 
 		// Log failed upstream requests too
 		if (c.env.ANALYTICS_DB) {
-			c.executionCtx.waitUntil(
-				logS3Event(c.env.ANALYTICS_DB, {
-					credential_id: accessKeyId,
-					operation: op.name,
-					bucket: op.bucket || null,
-					key: op.key || null,
-					status: 502,
-					duration_ms: Date.now() - start,
-					response_detail: e.message ?? null,
-					created_by: 'via API key',
-					created_at: Date.now(),
-				}),
-			);
+			const event = buildS3Event(accessKeyId, op.name, op.bucket, op.key, 502, Date.now() - start, e.message ?? null);
+			c.executionCtx.waitUntil(logS3Event(c.env.ANALYTICS_DB, event));
 		}
 
 		return s3XmlError('InternalError', 'An internal error occurred while contacting storage.', 502);
 	}
 });
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+/** Build an S3Event for D1 analytics. */
+function buildS3Event(
+	credentialId: string,
+	operation: string,
+	bucket: string | undefined,
+	key: string | undefined,
+	status: number,
+	durationMs: number,
+	responseDetail: string | null,
+): S3Event {
+	return {
+		credential_id: credentialId,
+		operation,
+		bucket: bucket || null,
+		key: key || null,
+		status,
+		duration_ms: durationMs,
+		response_detail: responseDetail,
+		created_by: AUDIT_CREATED_BY_API_KEY,
+		created_at: Date.now(),
+	};
+}

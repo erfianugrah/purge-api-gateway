@@ -1,6 +1,7 @@
 /** Shared helpers for admin route handlers. */
 
 import { AwsClient } from 'aws4fetch';
+import { CF_API_BASE } from '../constants';
 import type { AccessIdentity } from '../auth-access';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -80,7 +81,7 @@ export interface ValidationWarning {
  */
 export async function validateCfToken(token: string): Promise<ValidationWarning | null> {
 	try {
-		const res = await fetch('https://api.cloudflare.com/client/v4/user/tokens/verify', {
+		const res = await fetch(`${CF_API_BASE}/user/tokens/verify`, {
 			method: 'GET',
 			headers: { Authorization: `Bearer ${token}` },
 			signal: AbortSignal.timeout(VALIDATE_TIMEOUT_MS),

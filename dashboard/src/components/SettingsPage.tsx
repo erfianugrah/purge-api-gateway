@@ -69,9 +69,21 @@ const CONFIG_META: Record<string, ConfigKeyMeta> = {
 		unit: 'days',
 		section: 'Retention',
 	},
+	s3_rps: {
+		label: 'S3 RPS',
+		description: 'Account-level requests per second for S3 proxy',
+		unit: 'req/s',
+		section: 'S3 Proxy',
+	},
+	s3_burst: {
+		label: 'S3 Burst',
+		description: 'Account-level burst capacity for S3 proxy token bucket',
+		unit: 'tokens',
+		section: 'S3 Proxy',
+	},
 };
 
-const SECTION_ORDER = ['Bulk Purge', 'Single Purge', 'Caching', 'Retention'];
+const SECTION_ORDER = ['Bulk Purge', 'Single Purge', 'S3 Proxy', 'Caching', 'Retention'];
 
 // ─── Helpers ────────────────────────────────────────────────────────
 

@@ -1,4 +1,6 @@
 import { queryAll } from '../sql';
+import { DEFAULT_CACHE_TTL_MS } from '../constants';
+import { generateHexId, makePreview } from '../crypto';
 import type { BulkResult, BulkItemResult, BulkDryRunResult, BulkInspectItem } from '../types';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -49,7 +51,7 @@ export class UpstreamR2Manager {
 	private resolveCache = new Map<string, { creds: R2Credentials; cachedAt: number }>();
 	private cacheTtlMs: number;
 
-	constructor(sql: SqlStorage, cacheTtlMs: number = 60_000) {
+	constructor(sql: SqlStorage, cacheTtlMs: number = DEFAULT_CACHE_TTL_MS) {
 		this.sql = sql;
 		this.cacheTtlMs = cacheTtlMs;
 	}
@@ -216,16 +218,16 @@ export class UpstreamR2Manager {
 	 * Returns the first active wildcard endpoint, or the first active endpoint.
 	 */
 	resolveForListBuckets(): R2Credentials | null {
-		const rows = queryAll<UpstreamR2Row>(this.sql, 'SELECT * FROM upstream_r2 ORDER BY created_at ASC');
+		const rows = queryAll<UpstreamR2Row>(this.sql, 'SELECT * FROM upstream_r2 ORDER BY created_at DESC');
 		if (rows.length === 0) return null;
 
-		// Prefer wildcard
+		// Prefer wildcard (newest first, consistent with resolveForBucket)
 		for (const row of rows) {
 			if (row.bucket_names.split(',').includes('*')) {
 				return { accessKeyId: row.access_key_id, secretAccessKey: row.secret_access_key, endpoint: row.endpoint };
 			}
 		}
-		// Fallback to first registered
+		// Fallback to newest registered
 		const row = rows[0];
 		return { accessKeyId: row.access_key_id, secretAccessKey: row.secret_access_key, endpoint: row.endpoint };
 	}
@@ -237,19 +239,6 @@ export class UpstreamR2Manager {
 	}
 
 	private generateId(): string {
-		const bytes = new Uint8Array(12);
-		crypto.getRandomValues(bytes);
-		const hex = Array.from(bytes)
-			.map((b) => b.toString(16).padStart(2, '0'))
-			.join('');
-		return `${ID_PREFIX}${hex}`;
+		return generateHexId(ID_PREFIX, 12);
 	}
-}
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-/** Create a preview string: first 4 + "..." + last 4 chars. */
-function makePreview(key: string): string {
-	if (key.length <= 10) return '****';
-	return `${key.slice(0, 4)}...${key.slice(-4)}`;
 }

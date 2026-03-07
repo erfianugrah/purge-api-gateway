@@ -7,6 +7,7 @@ import { UpstreamTokenManager } from './upstream-tokens';
 import { UpstreamR2Manager } from './s3/upstream-r2';
 import { ConfigManager } from './config-registry';
 import { generateFlightId } from './crypto';
+import { CF_API_BASE, DEFAULT_RETRY_AFTER_SEC } from './constants';
 import type {
 	PurgeBody,
 	ConsumeResult,
@@ -224,7 +225,7 @@ export class Gatekeeper extends DurableObject<Env> {
 		}
 
 		// Upstream fetch
-		const upstreamUrl = `https://api.cloudflare.com/client/v4/zones/${zoneId}/purge_cache`;
+		const upstreamUrl = `${CF_API_BASE}/zones/${zoneId}/purge_cache`;
 		let upstreamResponse: Response;
 
 		try {
@@ -261,7 +262,7 @@ export class Gatekeeper extends DurableObject<Env> {
 		// Handle upstream 429 — drain bucket
 		if (upstreamResponse.status === 429) {
 			bucket.drain();
-			const retryAfter = upstreamResponse.headers.get('Retry-After') || '5';
+			const retryAfter = upstreamResponse.headers.get('Retry-After') || String(DEFAULT_RETRY_AFTER_SEC);
 			const responseBody = await upstreamResponse.text();
 
 			return {

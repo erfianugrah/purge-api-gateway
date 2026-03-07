@@ -1,5 +1,5 @@
-import { SELF, fetchMock } from 'cloudflare:test';
-import { describe, it, expect, beforeAll, afterEach } from 'vitest';
+import { SELF, env, fetchMock } from 'cloudflare:test';
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import { adminHeaders, ADMIN_KEY } from './helpers';
 
 // --- Tests ---
@@ -456,5 +456,196 @@ describe('Upstream R2 — validate on registration', () => {
 		const data = await res.json<any>();
 		expect(data.success).toBe(true);
 		expect(data.warnings).toBeUndefined();
+	});
+});
+
+// --- Resolution logic (Fix #5 — ORDER BY created_at DESC, exact vs wildcard) ---
+
+describe('Upstream R2 — resolution', () => {
+	// --- Constants ---
+	const BUCKET_ASSETS = 'assets';
+	const BUCKET_MEDIA = 'media';
+	const BUCKET_UNREGISTERED = 'unregistered-bucket';
+
+	const ENDPOINT_EXACT = 'https://exact-acct.r2.cloudflarestorage.com';
+	const ENDPOINT_WILDCARD = 'https://wildcard-acct.r2.cloudflarestorage.com';
+	const ENDPOINT_NEWER = 'https://newer-acct.r2.cloudflarestorage.com';
+
+	const AK_EXACT = 'EXACTACCESSKEYID12345';
+	const SK_EXACT = 'exactsecretaccesskey1234567890abcdef1234567890abcdef1234567890abcd';
+	const AK_WILDCARD = 'WILDCRDACCESSKEYID123';
+	const SK_WILDCARD = 'wildcrdsecretaccesskey1234567890abcdef1234567890abcdef1234567890ab';
+	const AK_NEWER = 'NEWERACCESSKEYID12345';
+	const SK_NEWER = 'newersecretaccesskey1234567890abcdef1234567890abcdef1234567890abcd';
+
+	/** Get the DO stub for direct RPC calls. */
+	function getStub() {
+		return env.GATEKEEPER.get(env.GATEKEEPER.idFromName('account'));
+	}
+
+	/** Register an upstream R2 endpoint and return its ID. */
+	async function registerEndpoint(
+		name: string,
+		accessKeyId: string,
+		secretAccessKey: string,
+		endpoint: string,
+		bucketNames: string[],
+	): Promise<string> {
+		const res = await SELF.fetch('http://localhost/admin/upstream-r2', {
+			method: 'POST',
+			headers: adminHeaders(),
+			body: JSON.stringify({ name, access_key_id: accessKeyId, secret_access_key: secretAccessKey, endpoint, bucket_names: bucketNames }),
+		});
+		const data = await res.json<any>();
+		if (!data.success) throw new Error(`registerEndpoint failed: ${JSON.stringify(data.errors)}`);
+		return data.result.id;
+	}
+
+	/** Delete an upstream R2 endpoint by ID. */
+	async function deleteEndpoint(id: string): Promise<void> {
+		await SELF.fetch(`http://localhost/admin/upstream-r2/${id}`, {
+			method: 'DELETE',
+			headers: adminHeaders(),
+		});
+	}
+
+	it('exact bucket match -> returns matching credentials', async () => {
+		const id = await registerEndpoint('exact-bucket', AK_EXACT, SK_EXACT, ENDPOINT_EXACT, [BUCKET_ASSETS]);
+		try {
+			const resolved = await getStub().resolveR2ForBucket(BUCKET_ASSETS);
+			expect(resolved).not.toBeNull();
+			expect(resolved!.accessKeyId).toBe(AK_EXACT);
+			expect(resolved!.endpoint).toBe(ENDPOINT_EXACT);
+		} finally {
+			await deleteEndpoint(id);
+		}
+	});
+
+	it('wildcard endpoint -> returned for any bucket', async () => {
+		const id = await registerEndpoint('wildcard-bucket', AK_WILDCARD, SK_WILDCARD, ENDPOINT_WILDCARD, ['*']);
+		try {
+			const resolved = await getStub().resolveR2ForBucket(BUCKET_MEDIA);
+			expect(resolved).not.toBeNull();
+			expect(resolved!.accessKeyId).toBe(AK_WILDCARD);
+			expect(resolved!.endpoint).toBe(ENDPOINT_WILDCARD);
+		} finally {
+			await deleteEndpoint(id);
+		}
+	});
+
+	it('exact match preferred over wildcard', async () => {
+		const wcId = await registerEndpoint('res-wc', AK_WILDCARD, SK_WILDCARD, ENDPOINT_WILDCARD, ['*']);
+		const exactId = await registerEndpoint('res-exact', AK_EXACT, SK_EXACT, ENDPOINT_EXACT, [BUCKET_ASSETS]);
+		try {
+			// BUCKET_ASSETS should resolve to the exact credentials
+			const resolvedAssets = await getStub().resolveR2ForBucket(BUCKET_ASSETS);
+			expect(resolvedAssets).not.toBeNull();
+			expect(resolvedAssets!.accessKeyId).toBe(AK_EXACT);
+
+			// BUCKET_MEDIA should fall back to the wildcard
+			const resolvedMedia = await getStub().resolveR2ForBucket(BUCKET_MEDIA);
+			expect(resolvedMedia).not.toBeNull();
+			expect(resolvedMedia!.accessKeyId).toBe(AK_WILDCARD);
+		} finally {
+			await deleteEndpoint(exactId);
+			await deleteEndpoint(wcId);
+		}
+	});
+
+	it('newest endpoint wins when multiple claim the same bucket', async () => {
+		vi.useFakeTimers();
+		try {
+			vi.setSystemTime(new Date('2025-01-01T00:00:00Z'));
+			const olderId = await registerEndpoint('older', AK_EXACT, SK_EXACT, ENDPOINT_EXACT, [BUCKET_ASSETS]);
+
+			vi.setSystemTime(new Date('2025-06-01T00:00:00Z'));
+			const newerId = await registerEndpoint('newer', AK_NEWER, SK_NEWER, ENDPOINT_NEWER, [BUCKET_ASSETS]);
+
+			const resolved = await getStub().resolveR2ForBucket(BUCKET_ASSETS);
+			expect(resolved).not.toBeNull();
+			expect(resolved!.accessKeyId).toBe(AK_NEWER);
+			expect(resolved!.endpoint).toBe(ENDPOINT_NEWER);
+
+			await deleteEndpoint(newerId);
+			await deleteEndpoint(olderId);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('no match -> returns null', async () => {
+		const resolved = await getStub().resolveR2ForBucket(BUCKET_UNREGISTERED);
+		expect(resolved).toBeNull();
+	});
+
+	it('deleted endpoint -> no longer resolved', async () => {
+		const id = await registerEndpoint('delete-resolve', AK_EXACT, SK_EXACT, ENDPOINT_EXACT, [BUCKET_ASSETS]);
+		const before = await getStub().resolveR2ForBucket(BUCKET_ASSETS);
+		expect(before).not.toBeNull();
+		expect(before!.accessKeyId).toBe(AK_EXACT);
+
+		await deleteEndpoint(id);
+		const after = await getStub().resolveR2ForBucket(BUCKET_ASSETS);
+		expect(after).toBeNull();
+	});
+
+	it('multi-bucket endpoint covers all listed buckets', async () => {
+		const id = await registerEndpoint('multi-bucket', AK_EXACT, SK_EXACT, ENDPOINT_EXACT, [BUCKET_ASSETS, BUCKET_MEDIA]);
+		try {
+			expect((await getStub().resolveR2ForBucket(BUCKET_ASSETS))!.accessKeyId).toBe(AK_EXACT);
+			expect((await getStub().resolveR2ForBucket(BUCKET_MEDIA))!.accessKeyId).toBe(AK_EXACT);
+			expect(await getStub().resolveR2ForBucket(BUCKET_UNREGISTERED)).toBeNull();
+		} finally {
+			await deleteEndpoint(id);
+		}
+	});
+
+	// --- resolveForListBuckets ---
+
+	it('resolveForListBuckets prefers newest wildcard', async () => {
+		vi.useFakeTimers();
+		try {
+			vi.setSystemTime(new Date('2025-01-01T00:00:00Z'));
+			const oldWcId = await registerEndpoint('old-wc', AK_WILDCARD, SK_WILDCARD, ENDPOINT_WILDCARD, ['*']);
+
+			vi.setSystemTime(new Date('2025-06-01T00:00:00Z'));
+			const newWcId = await registerEndpoint('new-wc', AK_NEWER, SK_NEWER, ENDPOINT_NEWER, ['*']);
+
+			const resolved = await getStub().resolveR2ForListBuckets();
+			expect(resolved).not.toBeNull();
+			// Newest wildcard should win (ORDER BY created_at DESC)
+			expect(resolved!.accessKeyId).toBe(AK_NEWER);
+
+			await deleteEndpoint(newWcId);
+			await deleteEndpoint(oldWcId);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('resolveForListBuckets falls back to newest non-wildcard when no wildcard exists', async () => {
+		vi.useFakeTimers();
+		try {
+			vi.setSystemTime(new Date('2025-01-01T00:00:00Z'));
+			const olderId = await registerEndpoint('old-specific', AK_EXACT, SK_EXACT, ENDPOINT_EXACT, [BUCKET_ASSETS]);
+
+			vi.setSystemTime(new Date('2025-06-01T00:00:00Z'));
+			const newerId = await registerEndpoint('new-specific', AK_NEWER, SK_NEWER, ENDPOINT_NEWER, [BUCKET_MEDIA]);
+
+			const resolved = await getStub().resolveR2ForListBuckets();
+			expect(resolved).not.toBeNull();
+			// Falls back to newest non-wildcard (first in DESC order)
+			expect(resolved!.accessKeyId).toBe(AK_NEWER);
+
+			await deleteEndpoint(newerId);
+			await deleteEndpoint(olderId);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('resolveForListBuckets returns null when no endpoints exist', async () => {
+		const resolved = await getStub().resolveR2ForListBuckets();
+		expect(resolved).toBeNull();
 	});
 });

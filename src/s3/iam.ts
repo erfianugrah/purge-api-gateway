@@ -1,5 +1,8 @@
 import { evaluatePolicy } from '../policy-engine';
 import { queryAll } from '../sql';
+import { MS_PER_DAY, DEFAULT_CACHE_TTL_MS } from '../constants';
+import { generateHexId } from '../crypto';
+import { POLICY_VERSION } from '../policy-types';
 import type { PolicyDocument, RequestContext } from '../policy-types';
 import type { S3Credential, CachedS3Credential, CreateS3CredentialRequest } from './types';
 import type { AuthResult, BulkItemResult, BulkResult, BulkInspectItem, BulkDryRunResult } from '../types';
@@ -12,7 +15,7 @@ export class S3CredentialManager {
 	private cache: Map<string, CachedS3Credential> = new Map();
 	private cacheTtlMs: number;
 
-	constructor(sql: SqlStorage, cacheTtlMs: number = 60_000) {
+	constructor(sql: SqlStorage, cacheTtlMs: number = DEFAULT_CACHE_TTL_MS) {
 		this.sql = sql;
 		this.cacheTtlMs = cacheTtlMs;
 	}
@@ -40,7 +43,7 @@ export class S3CredentialManager {
 		const accessKeyId = this.generateAccessKeyId();
 		const secretAccessKey = this.generateSecretAccessKey();
 		const now = Date.now();
-		const expiresAt = req.expires_in_days ? now + req.expires_in_days * 86400_000 : null;
+		const expiresAt = req.expires_in_days ? now + req.expires_in_days * MS_PER_DAY : null;
 
 		const policyJson = JSON.stringify(req.policy);
 
@@ -241,7 +244,7 @@ export class S3CredentialManager {
 		try {
 			resolvedPolicy = JSON.parse(credential.policy) as PolicyDocument;
 		} catch {
-			resolvedPolicy = { version: '2025-01-01', statements: [] };
+			resolvedPolicy = { version: POLICY_VERSION, statements: [] };
 		}
 
 		const entry: CachedS3Credential = {
@@ -266,10 +269,6 @@ export class S3CredentialManager {
 
 	/** Generate a 64-char hex secret access key (32 random bytes). */
 	private generateSecretAccessKey(): string {
-		const bytes = new Uint8Array(32);
-		crypto.getRandomValues(bytes);
-		return Array.from(bytes)
-			.map((b) => b.toString(16).padStart(2, '0'))
-			.join('');
+		return generateHexId('', 32);
 	}
 }

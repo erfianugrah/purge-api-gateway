@@ -100,9 +100,12 @@ function groupByFlight(events: UnifiedEvent[]): FlightGroup[] {
 	return groups;
 }
 
+/** Offset to avoid ID collisions between purge events and S3 events in the unified view. */
+const S3_EVENT_ID_OFFSET = 1_000_000_000;
+
 function fromS3(ev: S3Event): UnifiedEvent {
 	return {
-		id: ev.id + 1_000_000_000,
+		id: ev.id + S3_EVENT_ID_OFFSET,
 		source: 's3',
 		status: ev.status,
 		duration_ms: ev.duration_ms,

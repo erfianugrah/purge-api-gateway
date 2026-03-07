@@ -266,8 +266,8 @@ export function OverviewDashboard() {
 				revokedKeys: keys.filter((k) => k.revoked).length,
 				activeS3Creds: s3Creds.filter((c) => !c.revoked).length,
 				revokedS3Creds: s3Creds.filter((c) => c.revoked).length,
-				activeUpstreamTokens: upTokens.filter((t) => !t.revoked).length,
-				activeUpstreamR2: upR2.filter((r) => !r.revoked).length,
+				activeUpstreamTokens: upTokens.length,
+				activeUpstreamR2: upR2.length,
 			});
 		} catch (e: any) {
 			setError(e.message ?? 'Failed to load summary');

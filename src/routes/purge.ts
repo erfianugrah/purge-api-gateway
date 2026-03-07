@@ -3,6 +3,7 @@ import { RequestCollapser } from '../request-collapse';
 import { logPurgeEvent } from '../analytics';
 import { getStub } from '../do-stub';
 import { extractRequestFields } from '../request-fields';
+import { ZONE_ID_RE, BEARER_PREFIX, MAX_LOG_VALUE_LENGTH, AUDIT_CREATED_BY_API_KEY } from '../constants';
 import type { PurgeEvent } from '../analytics';
 import type { PurgeBody, ParsedPurgeRequest, PurgeResult, HonoEnv } from '../types';
 
@@ -35,7 +36,7 @@ purgeRoute.post('/v1/zones/:zoneId/purge_cache', async (c) => {
 		};
 
 		// Validate zone ID format
-		if (!/^[a-f0-9]{32}$/.test(zoneId)) {
+		if (!ZONE_ID_RE.test(zoneId)) {
 			log.status = 400;
 			log.error = 'invalid_zone_id';
 			log.durationMs = Date.now() - start;
@@ -45,14 +46,14 @@ purgeRoute.post('/v1/zones/:zoneId/purge_cache', async (c) => {
 
 		// Check auth header presence early
 		const authHeader = c.req.header('Authorization');
-		if (!authHeader || !authHeader.startsWith('Bearer ')) {
+		if (!authHeader || !authHeader.startsWith(BEARER_PREFIX)) {
 			log.status = 401;
 			log.error = 'missing_auth';
 			log.durationMs = Date.now() - start;
 			console.log(JSON.stringify(log));
 			return c.json({ success: false, errors: [{ code: 401, message: 'Missing Authorization: Bearer <key>' }] }, 401);
 		}
-		const keyId = authHeader.slice(7).trim();
+		const keyId = authHeader.slice(BEARER_PREFIX.length).trim();
 		log.keyId = keyId.slice(0, 12) + '...';
 
 		// Parse body
@@ -91,20 +92,12 @@ purgeRoute.post('/v1/zones/:zoneId/purge_cache', async (c) => {
 		log.rateClass = parsed.rateClass;
 		log.tokens = parsed.tokens;
 
-		// Resolve upstream CF API token for this zone
-		const upstreamToken = await stub.resolveUpstreamToken(zoneId);
-		if (!upstreamToken) {
-			log.status = 502;
-			log.error = 'no_upstream_token';
-			log.durationMs = Date.now() - start;
-			console.log(JSON.stringify(log));
-			return c.json({ success: false, errors: [{ code: 502, message: `No upstream API token registered for zone ${zoneId}` }] }, 502);
-		}
-
 		// Extract request-level fields for policy conditions (IP, geo, time)
 		const requestFields = extractRequestFields(c.req.raw);
 
-		// Full policy authorization (always per-request, never collapsed)
+		// Full policy authorization (always per-request, never collapsed).
+		// Authorize BEFORE resolving the upstream token so unauthorized callers
+		// cannot probe which zones have upstream tokens registered.
 		const authResult = await stub.authorizeFromBody(keyId, zoneId, body, requestFields);
 		if (!authResult.authorized) {
 			const status = authResult.error === 'Invalid API key' ? 401 : 403;
@@ -122,6 +115,16 @@ purgeRoute.post('/v1/zones/:zoneId/purge_cache', async (c) => {
 				},
 				status as 401 | 403,
 			);
+		}
+
+		// Resolve upstream CF API token for this zone (after auth to avoid info leak)
+		const upstreamToken = await stub.resolveUpstreamToken(zoneId);
+		if (!upstreamToken) {
+			log.status = 502;
+			log.error = 'no_upstream_token';
+			log.durationMs = Date.now() - start;
+			console.log(JSON.stringify(log));
+			return c.json({ success: false, errors: [{ code: 502, message: `No upstream API token registered for zone ${zoneId}` }] }, 502);
 		}
 
 		// ── Isolate-level request collapsing ────────────────────────────────
@@ -157,41 +160,17 @@ purgeRoute.post('/v1/zones/:zoneId/purge_cache', async (c) => {
 
 		console.log(JSON.stringify(log));
 
-		// Extract upstream response detail for debugging — truncated CF API JSON
-		let responseDetail: string | null = null;
-		if (result.reachedUpstream && result.body) {
-			try {
-				const parsed = JSON.parse(result.body);
-				// Keep only the useful debugging fields from the CF API response
-				const detail: Record<string, unknown> = {};
-				if (parsed.success !== undefined) detail.success = parsed.success;
-				if (parsed.errors?.length) detail.errors = parsed.errors;
-				if (parsed.messages?.length) detail.messages = parsed.messages;
-				const serialized = JSON.stringify(detail);
-				responseDetail = serialized.length > 4096 ? serialized.slice(0, 4096) : serialized;
-			} catch {
-				// Non-JSON upstream response — store raw (truncated)
-				responseDetail = result.body.length > 4096 ? result.body.slice(0, 4096) : result.body;
-			}
-		}
-
 		// Log to D1 analytics asynchronously (fire-and-forget)
 		if (env.ANALYTICS_DB) {
-			const event: PurgeEvent = {
-				key_id: keyId,
-				zone_id: zoneId,
-				purge_type: parsed.type,
-				purge_target: parsed.target,
-				tokens: parsed.tokens,
-				status: result.status,
-				collapsed: collapseLevel,
-				upstream_status: !collapseLevel && result.reachedUpstream ? result.status : null,
-				duration_ms: Date.now() - start,
-				response_detail: responseDetail,
-				created_by: 'via API key',
-				flight_id: flightId,
-				created_at: Date.now(),
-			};
+			const event = buildPurgeEvent({
+				keyId,
+				zoneId,
+				parsed,
+				result,
+				collapseLevel,
+				flightId,
+				durationMs: Date.now() - start,
+			});
 			c.executionCtx.waitUntil(logPurgeEvent(env.ANALYTICS_DB, event));
 		}
 
@@ -281,7 +260,7 @@ function summarizeFiles(files: (string | { url: string; headers?: Record<string,
 			parts.push(hdrs ? `${f.url} [${hdrs}]` : f.url);
 		}
 	}
-	return truncateTarget(parts.join(', '));
+	return truncate(parts.join(', '));
 }
 
 /** Build a human-readable target string for bulk purges (hosts, tags, prefixes). */
@@ -290,10 +269,52 @@ function summarizeBulk(body: PurgeBody): string {
 	if (body.hosts?.length) segments.push(body.hosts.join(', '));
 	if (body.tags?.length) segments.push(body.tags.map((t) => `tag:${t}`).join(', '));
 	if (body.prefixes?.length) segments.push(body.prefixes.map((p) => `prefix:${p}`).join(', '));
-	return truncateTarget(segments.join('; '));
+	return truncate(segments.join('; '));
 }
 
-/** Truncate target string to fit in a D1 TEXT column without bloating storage. */
-function truncateTarget(s: string): string {
-	return s.length > 4096 ? s.slice(0, 4096) : s;
+/** Truncate a string to the maximum log/analytics storage length. */
+function truncate(s: string): string {
+	return s.length > MAX_LOG_VALUE_LENGTH ? s.slice(0, MAX_LOG_VALUE_LENGTH) : s;
+}
+
+/** Extract upstream response detail for debugging — truncated CF API JSON or raw body. */
+function extractResponseDetail(result: PurgeResult): string | null {
+	if (!result.reachedUpstream || !result.body) return null;
+	try {
+		const parsed = JSON.parse(result.body);
+		const detail: Record<string, unknown> = {};
+		if (parsed.success !== undefined) detail.success = parsed.success;
+		if (parsed.errors?.length) detail.errors = parsed.errors;
+		if (parsed.messages?.length) detail.messages = parsed.messages;
+		return truncate(JSON.stringify(detail));
+	} catch {
+		return truncate(result.body);
+	}
+}
+
+/** Build a PurgeEvent for D1 analytics from the request lifecycle context. */
+function buildPurgeEvent(ctx: {
+	keyId: string;
+	zoneId: string;
+	parsed: ParsedPurgeRequest;
+	result: PurgeResult;
+	collapseLevel: string | false;
+	flightId: string;
+	durationMs: number;
+}): PurgeEvent {
+	return {
+		key_id: ctx.keyId,
+		zone_id: ctx.zoneId,
+		purge_type: ctx.parsed.type,
+		purge_target: ctx.parsed.target,
+		tokens: ctx.parsed.tokens,
+		status: ctx.result.status,
+		collapsed: ctx.collapseLevel,
+		upstream_status: !ctx.collapseLevel && ctx.result.reachedUpstream ? ctx.result.status : null,
+		duration_ms: ctx.durationMs,
+		response_detail: extractResponseDetail(ctx.result),
+		created_by: AUDIT_CREATED_BY_API_KEY,
+		flight_id: ctx.flightId,
+		created_at: Date.now(),
+	};
 }
