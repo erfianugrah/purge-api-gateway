@@ -91,7 +91,7 @@ gk keys create --name <name> --policy <json|@file> [--zone-id <id>] [--expires-i
 ```bash
 gk keys create \
   --name "staging-purge" \
-  --policy '{"purge":{"hosts":["staging.example.com"]}}' \
+  --policy '{"version":"2025-01-01","statements":[{"effect":"allow","actions":["purge:host"],"resources":["zone:abc123"],"conditions":[{"field":"host","operator":"eq","value":"staging.example.com"}]}]}' \
   --zone-id abc123 \
   --expires-in-days 90
 ```
@@ -350,7 +350,7 @@ is shown only once and cannot be retrieved later.
 ```bash
 gk s3-credentials create \
   --name "app-uploads" \
-  --policy '{"s3":{"buckets":["my-bucket"],"operations":["GetObject","PutObject"]}}'
+  --policy '{"version":"2025-01-01","statements":[{"effect":"allow","actions":["s3:GetObject","s3:PutObject"],"resources":["bucket:my-bucket","object:my-bucket/*"]}]}'
 ```
 
 ### s3-credentials list

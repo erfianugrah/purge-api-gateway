@@ -82,12 +82,12 @@ After deploying, register your upstream credentials (next section) before creati
 
 The CLI reads configuration from environment variables or flags:
 
-| Env var              | Flag          | Description                |
-| -------------------- | ------------- | -------------------------- |
-| `GATEKEEPER_URL`     | `--endpoint`  | Gateway URL                |
-| `GATEKEEPER_ADMIN`   | `--admin-key` | Admin key for `/admin/*`   |
-| `GATEKEEPER_API_KEY` | `--api-key`   | API key for purge requests |
-| `GATEKEEPER_ZONE_ID` | `--zone-id`   | Default zone ID            |
+| Env var                | Flag          | Description                |
+| ---------------------- | ------------- | -------------------------- |
+| `GATEKEEPER_URL`       | `--endpoint`  | Gateway URL                |
+| `GATEKEEPER_ADMIN_KEY` | `--admin-key` | Admin key for `/admin/*`   |
+| `GATEKEEPER_API_KEY`   | `--api-key`   | API key for purge requests |
+| `GATEKEEPER_ZONE_ID`   | `--zone-id`   | Default zone ID            |
 
 Set these in your shell profile or `.env` to avoid passing flags on every command.
 
@@ -1968,7 +1968,7 @@ curl -H "X-Admin-Key: $ADMIN_KEY" \
 
 ## 8. Configuration
 
-All gateway settings live in the config registry -- a SQLite table inside the Durable Object. No env vars, no redeployment needed. Changes take effect immediately.
+All gateway settings live in the config registry -- a SQLite table inside the Durable Object. Resolution order: registry override (highest priority), then env var fallback (e.g. `BULK_RATE`, `SINGLE_RATE`), then hardcoded default. Registry changes take effect immediately without redeployment.
 
 ### Config keys
 
@@ -1982,8 +1982,8 @@ All gateway settings live in the config registry -- a SQLite table inside the Du
 | `single_max_ops`     | `500`   | Max URLs in a single purge-by-URL request                       |
 | `key_cache_ttl_ms`   | `60000` | How long the DO caches key/credential lookups (ms)              |
 | `retention_days`     | `30`    | D1 analytics retention (cron at 03:00 UTC deletes older events) |
-| `s3_rps`             | --      | S3 proxy requests per second                                    |
-| `s3_burst`           | --      | S3 proxy burst capacity                                         |
+| `s3_rps`             | `100`   | S3 proxy requests per second                                    |
+| `s3_burst`           | `200`   | S3 proxy burst capacity                                         |
 
 ### 8.1 Viewing config
 

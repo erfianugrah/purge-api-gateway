@@ -118,9 +118,9 @@ The Durable Object soft limit is approximately 1,000 RPS. This is well above the
 
 Rate-limit token buckets are not persisted to SQLite. They exist only in DO memory. If the DO evicts from the runtime, buckets reset to full capacity. This is an intentional trade-off: the upstream API (Cloudflare, R2) is the real rate enforcer. The gateway's buckets are a courtesy that avoids wasting upstream quota on requests that will be rejected anyway.
 
-### Config Registry Over Environment Variables
+### Config Registry with Env Var Fallback
 
-All tunable gateway settings (rate limits, cache TTLs, retention period) live in a SQLite-backed config registry inside the DO, not in environment variables. Changes take effect immediately without redeployment. The DO rebuilds its token buckets whenever a rate-limit config value changes.
+All tunable gateway settings (rate limits, cache TTLs, retention period) use a three-tier resolution order: SQLite-backed registry override (highest priority), then environment variable fallback (e.g. `BULK_RATE`, `SINGLE_RATE`), then hardcoded default. Registry changes take effect immediately without redeployment. The DO rebuilds its token buckets whenever a rate-limit config value changes.
 
 ### Upstream Credentials as Runtime State
 
@@ -164,7 +164,7 @@ An S3-compatible proxy at `/s3/*`. Receives requests signed with AWS Sig V4 (hea
 
 **Files:** `src/config-registry.ts`, `src/routes/admin-config.ts`
 
-The runtime config registry. Stores key-value overrides in DO SQLite with a two-tier resolution order: registry override (highest priority) then hardcoded default. Eight config keys control rate limits (`bulk_rate`, `bulk_bucket_size`, `single_rate`, `single_bucket_size`, `bulk_max_ops`, `single_max_ops`), S3 rate limits (`s3_rps`, `s3_burst`), cache TTL (`key_cache_ttl_ms`), and analytics retention (`retention_days`). Writing a config value triggers an immediate token bucket rebuild.
+The runtime config registry. Stores key-value overrides in DO SQLite with a three-tier resolution order: registry override (highest priority), then env var fallback, then hardcoded default. Ten config keys control rate limits (`bulk_rate`, `bulk_bucket_size`, `single_rate`, `single_bucket_size`, `bulk_max_ops`, `single_max_ops`), S3 rate limits (`s3_rps`, `s3_burst`), cache TTL (`key_cache_ttl_ms`), and analytics retention (`retention_days`). Writing a config value triggers an immediate token bucket rebuild.
 
 ### 6. Analytics (Purge)
 
@@ -216,7 +216,7 @@ Each manager owns one SQLite table inside the DO:
 
 | Manager                | Table             | Key columns                                                                    |
 | ---------------------- | ----------------- | ------------------------------------------------------------------------------ |
-| `IamManager`           | `keys`            | `id`, `name`, `zone_id`, `policy`, `revoked`, `created_by`                     |
+| `IamManager`           | `api_keys`        | `id`, `name`, `zone_id`, `policy`, `revoked`, `created_by`                     |
 | `S3CredentialManager`  | `s3_credentials`  | `access_key_id`, `secret_access_key`, `policy`, `revoked`                      |
 | `UpstreamTokenManager` | `upstream_tokens` | `id`, `name`, `token`, `zone_ids`                                              |
 | `UpstreamR2Manager`    | `upstream_r2`     | `id`, `name`, `access_key_id`, `secret_access_key`, `endpoint`, `bucket_names` |
@@ -429,7 +429,7 @@ The `observability.enabled: true` flag in `wrangler.jsonc` enables Cloudflare's 
 
 ```
 wrangler.jsonc                       Worker config: DO, D1, Static Assets, cron
-openapi.yaml                         OpenAPI 3.1 spec (all endpoints)
+openapi.json                         OpenAPI 3.1 spec (all endpoints)
 src/
   index.ts                           Entrypoint: Hono app, security headers middleware, cron
   durable-object.ts                  Gatekeeper DO: all managers, RPC methods, bucket rebuild
@@ -467,7 +467,7 @@ src/
     xml.ts                           S3 XML error responses, DeleteObjects XML parsing
     analytics.ts                     D1 analytics for S3 (logS3Event, queryS3Events, queryS3Summary)
 cli/
-  index.ts                           Entry point (citty, 8 subcommands)
+  index.ts                           Entry point (citty, 9 subcommands)
   smoke-test.ts                      E2E smoke test orchestrator
   smoke/                             Modularized smoke test modules (9 files)
   client.ts                          HTTP client
@@ -478,10 +478,11 @@ cli/
     purge.ts                         gk purge {hosts,tags,prefixes,urls,everything}
     analytics.ts                     gk analytics {events,summary}
     s3-credentials.ts                gk s3-credentials {create,list,get,revoke,bulk-revoke,bulk-delete}
+    s3-analytics.ts                  gk s3-analytics {events,summary}
     upstream-tokens.ts               gk upstream-tokens {create,list,get,delete,bulk-delete}
     upstream-r2.ts                   gk upstream-r2 {create,list,get,delete,bulk-delete}
     config.ts                        gk config {get,set,reset}
-test/                                29 test files (561 tests)
+test/                                30 test files (634 tests, with 1 CLI test in cli/)
   helpers.ts                         Test factories, upstream token registration, mock helpers
   s3-helpers.ts                      R2 upstream registration, test constants
   policy-helpers.ts                  Shared policy test helpers
@@ -520,6 +521,7 @@ dashboard/
 | Package                                        | Role                                           |
 | ---------------------------------------------- | ---------------------------------------------- |
 | `hono`                                         | HTTP routing (Worker runtime dependency)       |
+| `zod`                                          | Request validation (Worker runtime dependency) |
 | `aws4fetch`                                    | AWS Sig V4 re-signing for outbound R2 requests |
 | `wrangler`                                     | Dev server, build, deploy                      |
 | `vitest` + `@cloudflare/vitest-pool-workers`   | Tests running in the Workers runtime           |
@@ -527,7 +529,7 @@ dashboard/
 | `tsx`                                          | Runs CLI in development without a build step   |
 | `astro` + `react` + `tailwindcss` + `recharts` | Dashboard SPA                                  |
 
-The Worker itself has only two runtime dependencies: `hono` (routing) and `aws4fetch` (S3 re-signing). Everything else is a dev/build/test dependency.
+The Worker itself has only three runtime dependencies: `hono` (routing), `zod` (request validation), and `aws4fetch` (S3 re-signing). Everything else is a dev/build/test dependency.
 
 ---
 

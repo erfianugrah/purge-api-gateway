@@ -229,7 +229,7 @@ Typed identifiers with optional wildcards.
 
 ### Condition Operators
 
-All 16 leaf operators:
+All 17 leaf operators:
 
 | Operator       | Types        | Description                                                                     |
 | -------------- | ------------ | ------------------------------------------------------------------------------- |
@@ -255,7 +255,7 @@ All 16 leaf operators:
 
 The expression engine is service-agnostic -- it evaluates conditions against a `Record<string, string | boolean>`. Each service handler builds the request context from the incoming request.
 
-#### Purge service fields (12 fields)
+#### Purge service fields (9 fields)
 
 | Field               | Source                            | Description                                             |
 | ------------------- | --------------------------------- | ------------------------------------------------------- |
@@ -282,7 +282,7 @@ The expression engine is service-agnostic -- it evaluates conditions against a `
 | `time.day_of_week` | `Date.now()` at eval time | Day of week (0=Sun, 6=Sat)           |
 | `time.iso`         | `Date.now()` at eval time | Full ISO-8601 timestamp              |
 
-#### S3/R2 service fields (13 fields)
+#### S3/R2 service fields (11 fields)
 
 | Field            | Source                  | Description                   |
 | ---------------- | ----------------------- | ----------------------------- |

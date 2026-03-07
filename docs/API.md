@@ -1,6 +1,6 @@
 # Gatekeeper API Reference
 
-Complete reference for the Gatekeeper API gateway (v4.0.0). All endpoints are documented with request/response shapes, authentication requirements, and error codes.
+Complete reference for the Gatekeeper API gateway (v1.0.0). All endpoints are documented with request/response shapes, authentication requirements, and error codes.
 
 The machine-readable OpenAPI 3.1 specification is available at [`openapi.json`](../openapi.json). It is auto-generated from the Zod schemas defined in `src/routes/admin-schemas.ts`.
 
