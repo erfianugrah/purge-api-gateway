@@ -3,6 +3,13 @@
 // In development, the Astro dev server proxies to the Worker.
 // In production, the dashboard and Worker share the same origin.
 
+// ─── Constants ──────────────────────────────────────────────────────
+
+/** Policy document version — must match the worker's POLICY_VERSION. */
+export const POLICY_VERSION = '2025-01-01';
+
+const ADMIN_KEY_HEADER = 'X-Admin-Key';
+
 export interface ApiKey {
 	id: string;
 	name: string;
@@ -137,7 +144,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 function adminHeaders(): Record<string, string> {
 	const adminKey = typeof window !== 'undefined' ? localStorage.getItem('adminKey') : null;
 	if (adminKey) {
-		return { 'X-Admin-Key': adminKey };
+		return { [ADMIN_KEY_HEADER]: adminKey };
 	}
 	return {};
 }
@@ -473,6 +480,10 @@ export interface GatewayConfig {
 	single_max_ops: number;
 	key_cache_ttl_ms: number;
 	retention_days: number;
+	/** S3 proxy: account-level requests per second. */
+	s3_rps: number;
+	/** S3 proxy: account-level burst capacity. */
+	s3_burst: number;
 }
 
 export interface ConfigOverride {

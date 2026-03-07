@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { getStub } from '../do-stub';
 import { parseBulkBody, resolveCreatedBy, validateCfToken } from './admin-helpers';
+import { ZONE_ID_RE } from '../constants';
 import type { ValidationWarning } from './admin-helpers';
 import type { HonoEnv } from '../types';
 
@@ -45,7 +46,6 @@ adminUpstreamTokensApp.post('/', async (c) => {
 		);
 	}
 
-	const ZONE_ID_RE = /^[a-f0-9]{32}$/;
 	const zoneIds = raw.zone_ids as string[];
 	const invalid = zoneIds.filter((z) => z !== '*' && !ZONE_ID_RE.test(z));
 	if (invalid.length > 0) {

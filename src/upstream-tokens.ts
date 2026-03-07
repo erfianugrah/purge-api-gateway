@@ -1,4 +1,6 @@
 import { queryAll } from './sql';
+import { DEFAULT_CACHE_TTL_MS } from './constants';
+import { generateHexId, makePreview } from './crypto';
 import type { BulkResult, BulkItemResult, BulkDryRunResult, BulkInspectItem } from './types';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -39,7 +41,7 @@ export class UpstreamTokenManager {
 	private resolveCache = new Map<string, { token: string; cachedAt: number }>();
 	private cacheTtlMs: number;
 
-	constructor(sql: SqlStorage, cacheTtlMs: number = 60_000) {
+	constructor(sql: SqlStorage, cacheTtlMs: number = DEFAULT_CACHE_TTL_MS) {
 		this.sql = sql;
 		this.cacheTtlMs = cacheTtlMs;
 	}
@@ -174,8 +176,9 @@ export class UpstreamTokenManager {
 			return cached.token;
 		}
 
-		// Look for a token that covers this zone — prefer exact match over wildcard
-		const rows = queryAll<UpstreamTokenRow>(this.sql, 'SELECT * FROM upstream_tokens');
+		// Look for a token that covers this zone — prefer exact match over wildcard.
+		// ORDER BY created_at DESC so newest registration wins when multiple tokens claim the same zone.
+		const rows = queryAll<UpstreamTokenRow>(this.sql, 'SELECT * FROM upstream_tokens ORDER BY created_at DESC');
 
 		let wildcardToken: string | null = null;
 
@@ -205,19 +208,6 @@ export class UpstreamTokenManager {
 	}
 
 	private generateId(): string {
-		const bytes = new Uint8Array(12);
-		crypto.getRandomValues(bytes);
-		const hex = Array.from(bytes)
-			.map((b) => b.toString(16).padStart(2, '0'))
-			.join('');
-		return `${ID_PREFIX}${hex}`;
+		return generateHexId(ID_PREFIX, 12);
 	}
-}
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-/** Create a preview string: first 4 + "..." + last 4 chars. */
-function makePreview(token: string): string {
-	if (token.length <= 10) return '****';
-	return `${token.slice(0, 4)}...${token.slice(-4)}`;
 }

@@ -2,6 +2,14 @@
 
 import { error, formatApiError, spinner, formatDuration } from './ui.js';
 
+// ─── Constants ──────────────────────────────────────────────────────────────
+
+const ADMIN_KEY_HEADER = 'X-Admin-Key';
+const CLI_FETCH_TIMEOUT_MS = 30_000;
+const ERROR_PREVIEW_MAX_LENGTH = 200;
+
+// ─── Config ─────────────────────────────────────────────────────────────────
+
 export interface ClientConfig {
 	baseUrl: string;
 	adminKey?: string;
@@ -52,7 +60,7 @@ export async function request(
 			error('Admin key required. Set --admin-key or GATEKEEPER_ADMIN_KEY.');
 			process.exit(1);
 		}
-		headers['X-Admin-Key'] = config.adminKey;
+		headers[ADMIN_KEY_HEADER] = config.adminKey;
 	} else if (opts?.auth === 'bearer') {
 		if (!config.apiKey) {
 			error('API key required. Set --api-key or GATEKEEPER_API_KEY.');
@@ -69,7 +77,7 @@ export async function request(
 			method,
 			headers,
 			body: opts?.body ? JSON.stringify(opts.body) : undefined,
-			signal: AbortSignal.timeout(30_000),
+			signal: AbortSignal.timeout(CLI_FETCH_TIMEOUT_MS),
 		});
 
 		const durationMs = Math.round(performance.now() - start);
@@ -77,7 +85,7 @@ export async function request(
 			// Non-JSON response (e.g. HTML error page) — include truncated body in error shape
 			try {
 				const text = await res.text();
-				const preview = text.length > 200 ? text.slice(0, 200) + '...' : text;
+				const preview = text.length > ERROR_PREVIEW_MAX_LENGTH ? text.slice(0, ERROR_PREVIEW_MAX_LENGTH) + '...' : text;
 				return { success: false, errors: [{ code: res.status, message: preview }] };
 			} catch {
 				return null;

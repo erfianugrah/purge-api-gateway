@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { PolicyBuilder } from '@/components/PolicyBuilder';
 import { usePagination } from '@/hooks/use-pagination';
 import { TablePagination } from '@/components/TablePagination';
-import { listKeys, createKey, revokeKey, deleteKey, bulkRevokeKeys, bulkDeleteKeys } from '@/lib/api';
+import { listKeys, createKey, revokeKey, deleteKey, bulkRevokeKeys, bulkDeleteKeys, POLICY_VERSION } from '@/lib/api';
 import type { ApiKey, PolicyDocument } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { T } from '@/lib/typography';
@@ -43,7 +43,7 @@ interface CreateKeyDialogProps {
 
 function makeDefaultPolicy(): PolicyDocument {
 	return {
-		version: '2025-01-01',
+		version: POLICY_VERSION,
 		statements: [
 			{
 				effect: 'allow',

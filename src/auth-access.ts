@@ -6,6 +6,8 @@
  * JWKS keys are cached in-memory with a 1-hour TTL.
  */
 
+import { CF_ACCESS_JWT_HEADER, CF_ACCESS_COOKIE, JWT_CLOCK_SKEW_SEC } from './constants';
+
 // ─── Types ──────────────────────────────────────────────────────────
 
 export interface AccessIdentity {
@@ -119,7 +121,7 @@ function getCookie(request: Request, name: string): string | null {
  */
 export async function validateAccessJwt(request: Request, teamName: string, aud: string): Promise<AccessIdentity | null> {
 	// Extract JWT from header or cookie
-	const token = request.headers.get('Cf-Access-Jwt-Assertion') ?? getCookie(request, 'CF_Authorization');
+	const token = request.headers.get(CF_ACCESS_JWT_HEADER) ?? getCookie(request, CF_ACCESS_COOKIE);
 	if (!token) return null;
 
 	let jwt;
@@ -176,7 +178,7 @@ export async function validateAccessJwt(request: Request, teamName: string, aud:
 	// Check expiry and issued-at
 	const now = Math.floor(Date.now() / 1000);
 	if (jwt.payload.exp < now) return null;
-	if (jwt.payload.iat > now + 60) return null; // 60s skew tolerance for future iat
+	if (jwt.payload.iat > now + JWT_CLOCK_SKEW_SEC) return null;
 
 	// Check issuer
 	const expectedIss = `https://${teamName}.cloudflareaccess.com`;

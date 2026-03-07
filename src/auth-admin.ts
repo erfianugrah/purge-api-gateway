@@ -16,6 +16,7 @@
 import type { Context, Next } from 'hono';
 import { validateAccessJwt } from './auth-access';
 import { timingSafeEqual } from './crypto';
+import { ADMIN_KEY_HEADER } from './constants';
 import type { HonoEnv, AdminRole } from './types';
 
 // ─── Role hierarchy ─────────────────────────────────────────────────────────
@@ -75,7 +76,7 @@ export async function adminAuth(c: Context<HonoEnv>, next: Next): Promise<Respon
 	}
 
 	// 2. Fall back to X-Admin-Key — for CLI and automation (always admin role)
-	const adminKey = c.req.header('X-Admin-Key');
+	const adminKey = c.req.header(ADMIN_KEY_HEADER);
 	if (adminKey && (await timingSafeEqual(adminKey, c.env.ADMIN_KEY))) {
 		c.set('adminRole', 'admin');
 		await next();

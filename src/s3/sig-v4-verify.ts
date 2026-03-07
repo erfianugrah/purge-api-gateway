@@ -1,3 +1,4 @@
+import { SIG_V4_ALGORITHM, SIG_V4_TERMINATOR, MAX_PRESIGNED_EXPIRY_SEC } from '../constants';
 import type { SigV4Components, SigV4VerifyResult } from './types';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -14,7 +15,7 @@ const ENCODER = new TextEncoder();
 
 /** Check if a request uses presigned URL authentication (Sig V4 in query params). */
 export function isPresignedUrl(searchParams: URLSearchParams): boolean {
-	return searchParams.get('X-Amz-Algorithm') === 'AWS4-HMAC-SHA256';
+	return searchParams.get('X-Amz-Algorithm') === SIG_V4_ALGORITHM;
 }
 
 /**
@@ -87,7 +88,7 @@ export async function verifySigV4(
 
 	// 6. Build string to sign
 	const canonicalRequestHash = await sha256Hex(canonicalRequest);
-	const stringToSign = ['AWS4-HMAC-SHA256', amzDate, parsed.credentialScope, canonicalRequestHash].join('\n');
+	const stringToSign = [SIG_V4_ALGORITHM, amzDate, parsed.credentialScope, canonicalRequestHash].join('\n');
 
 	// 7. Derive signing key
 	const signingKey = await deriveSigningKey(secret, parsed.date, parsed.region, parsed.service);
@@ -157,9 +158,9 @@ export async function verifySigV4Presigned(
 		return { valid: false, error: 'Invalid X-Amz-Expires value' };
 	}
 
-	// AWS max is 7 days (604800 seconds)
-	if (expiresSec > 604800) {
-		return { valid: false, error: 'X-Amz-Expires exceeds maximum (604800 seconds)' };
+	// AWS max is 7 days
+	if (expiresSec > MAX_PRESIGNED_EXPIRY_SEC) {
+		return { valid: false, error: `X-Amz-Expires exceeds maximum (${MAX_PRESIGNED_EXPIRY_SEC} seconds)` };
 	}
 
 	const now = Date.now();
@@ -194,7 +195,7 @@ export async function verifySigV4Presigned(
 
 	// 6. Build string to sign
 	const canonicalRequestHash = await sha256Hex(canonicalRequest);
-	const stringToSign = ['AWS4-HMAC-SHA256', amzDate, parsed.credentialScope, canonicalRequestHash].join('\n');
+	const stringToSign = [SIG_V4_ALGORITHM, amzDate, parsed.credentialScope, canonicalRequestHash].join('\n');
 
 	// 7. Derive signing key
 	const signingKey = await deriveSigningKey(secret, parsed.date, parsed.region, parsed.service);
@@ -223,9 +224,10 @@ export async function verifySigV4Presigned(
  *   Signature={sig}
  */
 export function parseAuthHeader(header: string): SigV4Components | null {
-	if (!header.startsWith('AWS4-HMAC-SHA256 ')) return null;
+	const prefix = `${SIG_V4_ALGORITHM} `;
+	if (!header.startsWith(prefix)) return null;
 
-	const rest = header.slice('AWS4-HMAC-SHA256 '.length);
+	const rest = header.slice(prefix.length);
 
 	const credMatch = rest.match(/Credential=([^,]+)/);
 	const headersMatch = rest.match(/SignedHeaders=([^,]+)/);
@@ -237,7 +239,7 @@ export function parseAuthHeader(header: string): SigV4Components | null {
 	if (credParts.length !== 5) return null;
 
 	const [accessKeyId, date, region, service, requestType] = credParts;
-	if (requestType !== 'aws4_request') return null;
+	if (requestType !== SIG_V4_TERMINATOR) return null;
 
 	return {
 		accessKeyId,
@@ -246,7 +248,7 @@ export function parseAuthHeader(header: string): SigV4Components | null {
 		service,
 		signedHeaders: headersMatch[1].split(';'),
 		signature: sigMatch[1],
-		credentialScope: `${date}/${region}/${service}/aws4_request`,
+		credentialScope: `${date}/${region}/${service}/${SIG_V4_TERMINATOR}`,
 	};
 }
 
@@ -263,7 +265,7 @@ export function parseAuthHeader(header: string): SigV4Components | null {
  */
 export function parsePresignedParams(searchParams: URLSearchParams): SigV4Components | null {
 	const algorithm = searchParams.get('X-Amz-Algorithm');
-	if (algorithm !== 'AWS4-HMAC-SHA256') return null;
+	if (algorithm !== SIG_V4_ALGORITHM) return null;
 
 	const credential = searchParams.get('X-Amz-Credential');
 	const signedHeaders = searchParams.get('X-Amz-SignedHeaders');
@@ -275,7 +277,7 @@ export function parsePresignedParams(searchParams: URLSearchParams): SigV4Compon
 	if (credParts.length !== 5) return null;
 
 	const [accessKeyId, date, region, service, requestType] = credParts;
-	if (requestType !== 'aws4_request') return null;
+	if (requestType !== SIG_V4_TERMINATOR) return null;
 
 	return {
 		accessKeyId,
@@ -284,7 +286,7 @@ export function parsePresignedParams(searchParams: URLSearchParams): SigV4Compon
 		service,
 		signedHeaders: signedHeaders.split(';'),
 		signature,
-		credentialScope: `${date}/${region}/${service}/aws4_request`,
+		credentialScope: `${date}/${region}/${service}/${SIG_V4_TERMINATOR}`,
 	};
 }
 
@@ -383,7 +385,7 @@ async function deriveSigningKey(secret: string, date: string, region: string, se
 	key = await hmacRaw(key, date);
 	key = await hmacRaw(key, region);
 	key = await hmacRaw(key, service);
-	key = await hmacRaw(key, 'aws4_request');
+	key = await hmacRaw(key, SIG_V4_TERMINATOR);
 	return key;
 }
 

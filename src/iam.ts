@@ -1,5 +1,7 @@
 import { evaluatePolicy } from './policy-engine';
 import { queryAll } from './sql';
+import { MS_PER_DAY, DEFAULT_CACHE_TTL_MS } from './constants';
+import { generateHexId } from './crypto';
 import type {
 	ApiKey,
 	CachedKey,
@@ -11,6 +13,7 @@ import type {
 	BulkInspectItem,
 	BulkDryRunResult,
 } from './types';
+import { POLICY_VERSION } from './policy-types';
 import type { PolicyDocument, RequestContext } from './policy-types';
 
 /** Key prefix for all keys. */
@@ -21,7 +24,7 @@ export class IamManager {
 	private cache: Map<string, CachedKey> = new Map();
 	private cacheTtlMs: number;
 
-	constructor(sql: SqlStorage, cacheTtlMs: number = 60_000) {
+	constructor(sql: SqlStorage, cacheTtlMs: number = DEFAULT_CACHE_TTL_MS) {
 		this.sql = sql;
 		this.cacheTtlMs = cacheTtlMs;
 	}
@@ -77,7 +80,7 @@ export class IamManager {
 	createKey(req: CreateKeyRequest): { key: ApiKey } {
 		const id = this.generateKeyId();
 		const now = Date.now();
-		const expiresAt = req.expires_in_days ? now + req.expires_in_days * 86400_000 : null;
+		const expiresAt = req.expires_in_days ? now + req.expires_in_days * MS_PER_DAY : null;
 
 		const policyJson = JSON.stringify(req.policy);
 
@@ -282,7 +285,7 @@ export class IamManager {
 			resolvedPolicy = JSON.parse(loaded.key.policy) as PolicyDocument;
 		} catch {
 			// Corrupt policy JSON — deny everything
-			resolvedPolicy = { version: '2025-01-01', statements: [] };
+			resolvedPolicy = { version: POLICY_VERSION, statements: [] };
 		}
 
 		const entry: CachedKey = {
@@ -295,12 +298,7 @@ export class IamManager {
 	}
 
 	private generateKeyId(): string {
-		const bytes = new Uint8Array(16);
-		crypto.getRandomValues(bytes);
-		const hex = Array.from(bytes)
-			.map((b) => b.toString(16).padStart(2, '0'))
-			.join('');
-		return `${KEY_PREFIX}${hex}`;
+		return generateHexId(KEY_PREFIX, 16);
 	}
 }
 
