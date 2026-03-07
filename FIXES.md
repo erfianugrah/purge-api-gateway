@@ -29,23 +29,23 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
 
 ### 1.1 `[HIGH]` No role-based access control on admin routes
 
-- **File**: `src/auth-admin.ts:19-37`, `src/routes/admin.ts:16`
+- **File**: `src/auth-admin.ts`, `src/auth-access.ts`, `src/routes/admin.ts`, `src/types.ts`
 - **Problem**: Any valid Cloudflare Access user gets **full admin access** (create/delete
-  keys, tokens, credentials, change config). The `AccessIdentity.type` field (`"app"` vs
-  `"service-token"`) is extracted but never checked. IDP group memberships and custom
-  claims in the JWT payload are completely ignored. A junior team member with CF Access
-  can delete all upstream tokens, bulk-delete all API keys, or reconfigure rate limits.
-- **Verification**: Cloudflare Access docs confirm JWTs can carry `groups` (via OIDC
-  `groups` scope) and custom claims per IdP (Entra ID, Okta, generic OIDC all support
-  this). The code's `JWTPayload` interface (`src/auth-access.ts:26-34`) only extracts
-  `sub`, `email`, `iss`, `aud`, `exp`, `iat`, `type` — groups/roles are silently dropped.
-- **Fix**: Extract `groups` (and optionally custom claims) from the JWT payload. Add a
-  role mapping layer (e.g. `admin`, `operator`, `viewer`) resolved from groups. Add
-  per-route authorization middleware that checks the required role. Example tiers:
-  - `viewer`: GET on `/admin/keys`, `/admin/analytics`, `/admin/config`
-  - `operator`: POST/DELETE on `/admin/keys`, `/admin/s3/credentials`, purge keys
-  - `admin`: everything including `/admin/config`, `/admin/upstream-*`
-- **Status**: `[ ]` (deferred — separate PR, new feature)
+  keys, tokens, credentials, change config). IDP group memberships in the JWT payload
+  are completely ignored.
+- **Fix**: Implemented full RBAC system:
+  - Extracted `groups` from JWT payload in `AccessIdentity` (`src/auth-access.ts`)
+  - Added `resolveRole()` function mapping IDP groups to `admin`/`operator`/`viewer` roles
+  - Added `requireRole()` and `requireRoleByMethod()` middleware factories
+  - Opt-in via env vars: `RBAC_ADMIN_GROUPS`, `RBAC_OPERATOR_GROUPS`, `RBAC_VIEWER_GROUPS`
+  - When unset, all authenticated users get `admin` (backward compatible)
+  - X-Admin-Key always gets `admin` role (CLI/automation bypass)
+  - Route-level enforcement in `admin.ts`:
+    - `viewer`: GET on keys, analytics, S3 creds, config
+    - `operator`: POST/DELETE on keys and S3 credentials
+    - `admin`: upstream tokens, upstream R2, config writes
+  - Added `AdminRole` type to `src/types.ts`
+- **Status**: `[x]`
 
 ### 1.2 `[LOW]` `created_by` is self-reported for non-SSO users
 
@@ -174,17 +174,16 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
 
 ### 4.2 `[MEDIUM]` ReDoS protection is basic — no runtime execution timeout
 
-- **File**: `src/policy-engine.ts:166-176`, `src/policy-engine.ts:295-296`
+- **File**: `src/policy-engine.ts`
 - **Problem**: `DANGEROUS_REGEX` catches some catastrophic patterns and `MAX_REGEX_LENGTH`
   caps at 256, but the runtime `new RegExp(pattern).test(value)` has no execution timeout.
-  A crafted regex that passes the basic check could still hang the Worker.
-- **Verification**: Cloudflare Workers have a 30-second CPU time limit (paid plan) and
-  10ms on free. A ReDoS would hit this limit and terminate the request, but it's a
-  denial-of-service vector for the Worker.
-- **Fix**: Consider using a regex engine with backtracking limits, or run `evalRegex` in a
-  try/catch with a more aggressive pattern validator. Alternatively, document that
-  `matches`/`not_matches` operators are advanced and should be used carefully.
-- **Status**: `[ ]`
+- **Fix**: Enhanced regex validation with three layers:
+  1. `DANGEROUS_REGEX` — existing catastrophic backtracking pattern check
+  2. `NESTED_QUANTIFIER` — new check for adjacent quantifiers (e.g. `a++`, `x*?+`)
+  3. `probeRegex()` — runtime probe that tests the pattern against an adversarial input
+     and rejects it if execution exceeds 5ms (catches patterns that bypass static analysis)
+  - Validation short-circuits after first failure for clarity
+- **Status**: `[x]`
 
 ### 4.3 `[LOW]` Resource/action matching only supports suffix wildcards
 
@@ -200,8 +199,9 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
 - **File**: `src/policy-engine.ts:183-191`
 - **Problem**: `evalWildcard` uses the `'i'` flag. `*.Example.com` matches `cdn.example.com`.
   This is documented in a comment but could surprise users.
-- **Fix**: Document in the API/policy docs that wildcard conditions are case-insensitive.
-- **Status**: `[ ]`
+- **Fix**: Already documented in JSDoc on `evalWildcard()` in `src/policy-engine.ts`.
+  The comment explicitly states "Case-insensitive — all wildcard comparisons ignore case by design."
+- **Status**: `[x]` (already documented in code)
 
 ---
 
@@ -213,11 +213,13 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
 - **Problem**: The purge path has both account-level and per-key token-bucket rate
   limiting. The S3 path has **zero rate limiting** — neither account-level nor
   per-credential. A compromised S3 credential can issue unlimited operations against R2.
-- **Fix**: Add S3 rate limiting, either:
-  - Account-level: token bucket in the DO for S3 ops (like purge has `bulkBucket`/`singleBucket`)
-  - Per-credential: configurable per-credential rate limits (like purge per-key limits)
-  - At minimum: a global S3 requests-per-second guard
-- **Status**: `[ ]` (deferred — separate PR, new feature)
+- **Fix**: Added account-level S3 rate limiting via DO token bucket (same pattern as purge):
+  - New config keys `s3_rps` (default 100) and `s3_burst` (default 200), admin-configurable via config API
+  - New `s3Bucket` TokenBucket in the DO, initialized from config, rebuilt on config change
+  - New `consumeS3RateLimit()` RPC method called after auth in `src/s3/routes.ts`
+  - Returns S3-compliant `SlowDown` XML error with `Retry-After` header on 429
+  - Extended `s3XmlError()` to accept optional extra headers
+- **Status**: `[x]`
 
 ### 5.2 `[MEDIUM]` `consume(count <= 0)` allows rate-limit bypass via RPC
 
@@ -272,9 +274,9 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
 - **File**: `src/upstream-tokens.ts:187-196`
 - **Problem**: A wildcard token (`zone_ids: "*"`) catches all zones without explicit tokens.
   If the wildcard token's actual CF account doesn't own all zones, requests fail silently.
-- **Fix**: Document that wildcard tokens should only be used when the account owns all
-  zones. Consider an optional scope validation at registration.
-- **Status**: `[ ]`
+- **Fix**: Added JSDoc documentation on `resolveTokenForZone()` in `src/upstream-tokens.ts`
+  explaining wildcard token caveats: mismatched accounts cause upstream 403s.
+- **Status**: `[x]`
 
 ### 6.4 `[LOW]` Upstream token zone_id format not validated at registration
 
@@ -539,8 +541,8 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
 ### Must-fix (security/correctness)
 
 1. 7.1 + 7.2 — Add try/catch to purge and admin route handlers
-2. 1.1 — Add RBAC to admin routes (extract groups from JWT, add role middleware)
-3. 5.1 — Add S3 rate limiting
+2. ~~1.1 — Add RBAC to admin routes (extract groups from JWT, add role middleware)~~ ✅
+3. ~~5.1 — Add S3 rate limiting~~ ✅
 4. 2.2 — Return MalformedXML on DeleteObjects parse failure
 5. 5.2 — Validate `count > 0` in token bucket
 6. 8.1 — Replace destructive migrations with safe ALTER TABLE

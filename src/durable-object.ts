@@ -59,6 +59,7 @@ function buildRateLimitResult(name: string, bucket: TokenBucket, consumeResult: 
 export class Gatekeeper extends DurableObject<Env> {
 	private bulkBucket!: TokenBucket;
 	private singleBucket!: TokenBucket;
+	private s3Bucket!: TokenBucket;
 	private iam!: IamManager;
 	private s3Iam!: S3CredentialManager;
 	private upstreamTokens!: UpstreamTokenManager;
@@ -83,6 +84,7 @@ export class Gatekeeper extends DurableObject<Env> {
 
 			this.bulkBucket = new TokenBucket(rlConfig.bulk.rate, rlConfig.bulk.bucketSize);
 			this.singleBucket = new TokenBucket(rlConfig.single.rate, rlConfig.single.bucketSize);
+			this.s3Bucket = new TokenBucket(gwConfig.s3_rps, gwConfig.s3_burst);
 
 			const cacheTtl = gwConfig.key_cache_ttl_ms;
 
@@ -108,12 +110,16 @@ export class Gatekeeper extends DurableObject<Env> {
 		// Only rebuild if rate-limit config actually changed — preserves remaining tokens otherwise
 		const bulkChanged = this.bulkBucket.rate !== rlConfig.bulk.rate || this.bulkBucket.bucketSize !== rlConfig.bulk.bucketSize;
 		const singleChanged = this.singleBucket.rate !== rlConfig.single.rate || this.singleBucket.bucketSize !== rlConfig.single.bucketSize;
+		const s3Changed = this.s3Bucket.rate !== gwConfig.s3_rps || this.s3Bucket.bucketSize !== gwConfig.s3_burst;
 
 		if (bulkChanged) {
 			this.bulkBucket = new TokenBucket(rlConfig.bulk.rate, rlConfig.bulk.bucketSize);
 		}
 		if (singleChanged) {
 			this.singleBucket = new TokenBucket(rlConfig.single.rate, rlConfig.single.bucketSize);
+		}
+		if (s3Changed) {
+			this.s3Bucket = new TokenBucket(gwConfig.s3_rps, gwConfig.s3_burst);
 		}
 		if (bulkChanged || singleChanged) {
 			// Clear per-key buckets so they pick up new account defaults
@@ -419,6 +425,11 @@ export class Gatekeeper extends DurableObject<Env> {
 	/** Authorize an S3 request against the credential's policy. */
 	async authorizeS3(accessKeyId: string, contexts: RequestContext[]): Promise<AuthResult> {
 		return this.s3Iam.authorize(accessKeyId, contexts);
+	}
+
+	/** Consume one S3 rate-limit token. Returns allowed/retry info for the account-level S3 bucket. */
+	async consumeS3RateLimit(): Promise<ConsumeResult> {
+		return this.s3Bucket.consume(1);
 	}
 
 	// ─── Upstream Token RPC methods ─────────────────────────────────────
