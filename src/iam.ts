@@ -1,5 +1,5 @@
 import { evaluatePolicy } from './policy-engine';
-import { queryAll } from './crypto';
+import { queryAll } from './sql';
 import type {
 	ApiKey,
 	CachedKey,

@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { validatePolicy } from '../policy-engine';
 import { getStub } from '../do-stub';
+import { parseBulkBody, resolveCreatedBy } from './admin-helpers';
 import type { CreateKeyRequest, HonoEnv } from '../types';
 import type { GatewayConfig } from '../config-registry';
 import type { PolicyDocument } from '../policy-types';
@@ -110,7 +111,7 @@ adminKeysApp.post('/', async (c) => {
 		name: raw.name as string,
 		zone_id: typeof raw.zone_id === 'string' ? raw.zone_id : undefined,
 		policy: raw.policy as PolicyDocument,
-		created_by: identity?.email ?? (typeof raw.created_by === 'string' ? raw.created_by : undefined),
+		created_by: resolveCreatedBy(identity, raw.created_by),
 		expires_in_days: typeof raw.expires_in_days === 'number' ? raw.expires_in_days : undefined,
 		rate_limit: rateLimit,
 	};
@@ -274,43 +275,6 @@ adminKeysApp.post('/bulk-delete', async (c) => {
 });
 
 // ─── Private helpers ────────────────────────────────────────────────────────
-
-const MAX_BULK_ITEMS = 100;
-
-/** Parse and validate a bulk operation request body. Returns parsed data or a 400 Response. */
-async function parseBulkBody(
-	c: { req: { json: <T>() => Promise<T> }; json: (data: unknown, status: number) => Response },
-	idField: 'ids' | 'access_key_ids',
-): Promise<{ ids: string[]; dryRun: boolean } | Response> {
-	let raw: Record<string, unknown>;
-	try {
-		raw = await c.req.json<Record<string, unknown>>();
-	} catch {
-		return c.json({ success: false, errors: [{ code: 400, message: 'Invalid JSON body' }] }, 400);
-	}
-
-	const ids = raw[idField];
-	if (!Array.isArray(ids) || ids.length === 0 || !ids.every((id) => typeof id === 'string')) {
-		return c.json({ success: false, errors: [{ code: 400, message: `${idField} must be a non-empty array of strings` }] }, 400);
-	}
-
-	if (ids.length > MAX_BULK_ITEMS) {
-		return c.json({ success: false, errors: [{ code: 400, message: `Maximum ${MAX_BULK_ITEMS} items per request` }] }, 400);
-	}
-
-	if (typeof raw.confirm_count !== 'number' || raw.confirm_count !== ids.length) {
-		return c.json(
-			{
-				success: false,
-				errors: [{ code: 400, message: `confirm_count must equal ${idField} array length (${ids.length})` }],
-			},
-			400,
-		);
-	}
-
-	const dryRun = raw.dry_run === true;
-	return { ids: ids as string[], dryRun };
-}
 
 /** Validate and extract rate_limit fields from raw input. Returns parsed object, undefined, or 'invalid'. */
 function validateRateLimitFields(raw: Record<string, unknown>): CreateKeyRequest['rate_limit'] | undefined | 'invalid' {

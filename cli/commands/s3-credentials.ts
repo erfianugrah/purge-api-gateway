@@ -17,24 +17,11 @@ import {
 	formatPolicy,
 	parsePolicy,
 	formatDuration,
-	symbols,
+	confirmAction,
 } from '../ui.js';
+import { baseArgs, forceArg } from '../shared-args.js';
 
-/** Shared args across s3-credentials commands — no zone-id needed. */
-const globalArgs = {
-	endpoint: {
-		type: 'string' as const,
-		description: 'Gateway URL ($GATEKEEPER_URL)',
-	},
-	'admin-key': {
-		type: 'string' as const,
-		description: 'Admin key ($GATEKEEPER_ADMIN_KEY)',
-	},
-	json: {
-		type: 'boolean' as const,
-		description: 'Output raw JSON',
-	},
-};
+const globalArgs = baseArgs;
 
 // --- s3-credentials create ---
 const create = defineCommand({
@@ -216,11 +203,7 @@ const revoke = defineCommand({
 			type: 'boolean',
 			description: 'Permanently delete the credential row instead of soft-revoking',
 		},
-		force: {
-			type: 'boolean',
-			alias: ['f'],
-			description: 'Skip confirmation prompt',
-		},
+		...forceArg,
 	},
 	async run({ args }) {
 		const config = resolveConfig(args);
@@ -228,22 +211,8 @@ const revoke = defineCommand({
 		const isPermanent = !!args.permanent;
 		const action = isPermanent ? 'permanently delete' : 'revoke';
 
-		if (!args.force && process.stdin.isTTY) {
-			warn(`You are about to ${action} S3 credential ${bold(accessKeyId)}. This cannot be undone.`);
-			process.stderr.write(`  Continue? [y/N] `);
-
-			const confirmed = await new Promise<boolean>((resolve) => {
-				process.stdin.setRawMode?.(true);
-				process.stdin.resume();
-				process.stdin.once('data', (chunk) => {
-					process.stdin.setRawMode?.(false);
-					process.stdin.pause();
-					const char = chunk.toString().trim().toLowerCase();
-					process.stderr.write(char + '\n');
-					resolve(char === 'y');
-				});
-			});
-
+		if (!args.force) {
+			const confirmed = await confirmAction(`You are about to ${action} S3 credential ${bold(accessKeyId)}. This cannot be undone.`);
 			if (!confirmed) {
 				info('Aborted.');
 				return;

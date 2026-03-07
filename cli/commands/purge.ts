@@ -1,21 +1,7 @@
 import { defineCommand } from 'citty';
 import { resolveConfig, resolveZoneId, request, assertOk } from '../client.js';
-import {
-	success,
-	warn,
-	info,
-	bold,
-	dim,
-	cyan,
-	green,
-	red,
-	yellow,
-	printJson,
-	formatRateLimit,
-	formatDuration,
-	symbols,
-	label,
-} from '../ui.js';
+import { success, warn, info, bold, dim, red, printJson, formatRateLimit, formatDuration, symbols, label, confirmAction } from '../ui.js';
+import { forceArg } from '../shared-args.js';
 
 /** Shared args for all purge subcommands */
 const sharedArgs = {
@@ -194,31 +180,13 @@ const everything = defineCommand({
 	},
 	args: {
 		...sharedArgs,
-		force: {
-			type: 'boolean',
-			alias: ['f'],
-			description: 'Skip confirmation prompt',
-		},
+		...forceArg,
 	},
 	async run({ args }) {
-		if (!args.force && process.stdin.isTTY) {
+		if (!args.force) {
 			const zoneId = resolveZoneId(args as Parameters<typeof resolveZoneId>[0]);
 			console.error('');
-			warn(`This will purge ${bold('ALL')} cached content for zone ${bold(zoneId)}.`);
-			process.stderr.write(`  Continue? [y/N] `);
-
-			const confirmed = await new Promise<boolean>((resolve) => {
-				process.stdin.setRawMode?.(true);
-				process.stdin.resume();
-				process.stdin.once('data', (chunk) => {
-					process.stdin.setRawMode?.(false);
-					process.stdin.pause();
-					const char = chunk.toString().trim().toLowerCase();
-					process.stderr.write(char + '\n');
-					resolve(char === 'y');
-				});
-			});
-
+			const confirmed = await confirmAction(`This will purge ${bold('ALL')} cached content for zone ${bold(zoneId)}.`);
 			if (!confirmed) {
 				info('Aborted.');
 				return;

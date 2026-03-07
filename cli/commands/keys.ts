@@ -11,37 +11,18 @@ import {
 	green,
 	red,
 	yellow,
-	gray,
 	table,
-	label,
 	printJson,
 	formatKey,
 	formatPolicy,
 	parsePolicy,
 	formatDuration,
 	symbols,
+	confirmAction,
 } from '../ui.js';
+import { zoneArgs, forceArg } from '../shared-args.js';
 
-/** Shared args across key commands */
-const globalArgs = {
-	endpoint: {
-		type: 'string' as const,
-		description: 'Gateway URL ($GATEKEEPER_URL)',
-	},
-	'admin-key': {
-		type: 'string' as const,
-		description: 'Admin key ($GATEKEEPER_ADMIN_KEY)',
-	},
-	'zone-id': {
-		type: 'string' as const,
-		alias: ['z'] as string[],
-		description: 'Cloudflare zone ID ($GATEKEEPER_ZONE_ID)',
-	},
-	json: {
-		type: 'boolean' as const,
-		description: 'Output raw JSON',
-	},
-};
+const globalArgs = zoneArgs;
 
 // --- keys create ---
 const create = defineCommand({
@@ -222,11 +203,7 @@ const revoke = defineCommand({
 			type: 'boolean',
 			description: 'Permanently delete the key row instead of soft-revoking',
 		},
-		force: {
-			type: 'boolean',
-			alias: ['f'],
-			description: 'Skip confirmation prompt',
-		},
+		...forceArg,
 	},
 	async run({ args }) {
 		const config = resolveConfig(args);
@@ -235,22 +212,8 @@ const revoke = defineCommand({
 		const isPermanent = !!args.permanent;
 		const action = isPermanent ? 'permanently delete' : 'revoke';
 
-		if (!args.force && process.stdin.isTTY) {
-			warn(`You are about to ${action} key ${bold(keyId)}. This cannot be undone.`);
-			process.stderr.write(`  Continue? [y/N] `);
-
-			const confirmed = await new Promise<boolean>((resolve) => {
-				process.stdin.setRawMode?.(true);
-				process.stdin.resume();
-				process.stdin.once('data', (chunk) => {
-					process.stdin.setRawMode?.(false);
-					process.stdin.pause();
-					const char = chunk.toString().trim().toLowerCase();
-					process.stderr.write(char + '\n');
-					resolve(char === 'y');
-				});
-			});
-
+		if (!args.force) {
+			const confirmed = await confirmAction(`You are about to ${action} key ${bold(keyId)}. This cannot be undone.`);
 			if (!confirmed) {
 				info('Aborted.');
 				return;

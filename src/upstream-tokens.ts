@@ -1,4 +1,4 @@
-import { queryAll } from './crypto';
+import { queryAll } from './sql';
 import type { BulkResult, BulkItemResult, BulkDryRunResult, BulkInspectItem } from './types';
 
 // ─── Types ──────────────────────────────────────────────────────────────────

@@ -24,11 +24,6 @@ export async function timingSafeEqual(a: string, b: string): Promise<boolean> {
 	return (crypto.subtle as SubtleCrypto & { timingSafeEqual(a: ArrayBuffer, b: ArrayBuffer): boolean }).timingSafeEqual(macA, macB);
 }
 
-/** Type-safe helper to avoid repetitive `as unknown as T[]` on every DO SQLite query. */
-export function queryAll<T>(sql: SqlStorage, query: string, ...params: unknown[]): T[] {
-	return sql.exec(query, ...params).toArray() as unknown as T[];
-}
-
 /** Generate a short random flight identifier (8 hex chars). */
 export function generateFlightId(): string {
 	const bytes = new Uint8Array(4);

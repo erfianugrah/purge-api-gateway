@@ -86,12 +86,12 @@ describe('Upstream tokens — CRUD', () => {
 			body: JSON.stringify({
 				name: 'multi-zone',
 				token: 'cf-multi-zone-token-1234567890abcdef1234567890ab',
-				zone_ids: ['zone-aaa', 'zone-bbb'],
+				zone_ids: ['aaaa1111bbbb2222cccc3333dddd4444', 'eeee5555ffff6666aaaa7777bbbb8888'],
 			}),
 		});
 		expect(res.status).toBe(200);
 		const data = await res.json<any>();
-		expect(data.result.zone_ids).toBe('zone-aaa,zone-bbb');
+		expect(data.result.zone_ids).toBe('aaaa1111bbbb2222cccc3333dddd4444,eeee5555ffff6666aaaa7777bbbb8888');
 	});
 
 	it('get nonexistent token -> 404', async () => {
@@ -334,6 +334,6 @@ describe('Upstream tokens — created_by', () => {
 		});
 		expect(res.status).toBe(200);
 		const data = await res.json<any>();
-		expect(data.result.created_by).toBe('test@example.com');
+		expect(data.result.created_by).toBe('unverified:test@example.com');
 	});
 });

@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { getStub } from '../do-stub';
+import { parseBulkBody, resolveCreatedBy } from './admin-helpers';
 import type { HonoEnv } from '../types';
 
 // ─── Admin: Upstream R2 Endpoint Management ─────────────────────────────────
@@ -76,7 +77,7 @@ adminUpstreamR2App.post('/', async (c) => {
 		secret_access_key: raw.secret_access_key,
 		endpoint: raw.endpoint,
 		bucket_names: raw.bucket_names as string[],
-		created_by: identity?.email ?? (typeof raw.created_by === 'string' ? raw.created_by : undefined),
+		created_by: resolveCreatedBy(identity, raw.created_by),
 	});
 
 	log.status = 200;
@@ -143,8 +144,6 @@ adminUpstreamR2App.delete('/:id', async (c) => {
 
 // ─── Bulk delete ────────────────────────────────────────────────────────────
 
-const MAX_BULK_ITEMS = 100;
-
 adminUpstreamR2App.post('/bulk-delete', async (c) => {
 	const log: Record<string, unknown> = { route: 'admin.bulkDeleteUpstreamR2', ts: new Date().toISOString() };
 
@@ -169,40 +168,3 @@ adminUpstreamR2App.post('/bulk-delete', async (c) => {
 	console.log(JSON.stringify(log));
 	return c.json({ success: true, result });
 });
-
-// ─── Private helpers ────────────────────────────────────────────────────────
-
-/** Parse and validate a bulk operation request body. */
-async function parseBulkBody(c: {
-	req: { json: <T>() => Promise<T> };
-	json: (data: unknown, status: number) => Response;
-}): Promise<{ ids: string[]; dryRun: boolean } | Response> {
-	let raw: Record<string, unknown>;
-	try {
-		raw = await c.req.json<Record<string, unknown>>();
-	} catch {
-		return c.json({ success: false, errors: [{ code: 400, message: 'Invalid JSON body' }] }, 400);
-	}
-
-	const ids = raw.ids;
-	if (!Array.isArray(ids) || ids.length === 0 || !ids.every((id) => typeof id === 'string')) {
-		return c.json({ success: false, errors: [{ code: 400, message: 'ids must be a non-empty array of strings' }] }, 400);
-	}
-
-	if (ids.length > MAX_BULK_ITEMS) {
-		return c.json({ success: false, errors: [{ code: 400, message: `Maximum ${MAX_BULK_ITEMS} items per request` }] }, 400);
-	}
-
-	if (typeof raw.confirm_count !== 'number' || raw.confirm_count !== ids.length) {
-		return c.json(
-			{
-				success: false,
-				errors: [{ code: 400, message: `confirm_count must equal ids array length (${ids.length})` }],
-			},
-			400,
-		);
-	}
-
-	const dryRun = raw.dry_run === true;
-	return { ids: ids as string[], dryRun };
-}

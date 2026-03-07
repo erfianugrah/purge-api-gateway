@@ -1,5 +1,5 @@
 import { evaluatePolicy } from '../policy-engine';
-import { queryAll } from '../crypto';
+import { queryAll } from '../sql';
 import type { PolicyDocument, RequestContext } from '../policy-types';
 import type { S3Credential, CachedS3Credential, CreateS3CredentialRequest } from './types';
 import type { AuthResult, BulkItemResult, BulkResult, BulkInspectItem, BulkDryRunResult } from '../types';
