@@ -253,11 +253,14 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
   stores it without testing that it works. An invalid/revoked token causes every purge or
   S3 request for affected zones/buckets to fail with upstream errors. Misconfigurations are
   only discovered at request time.
-- **Fix**: Add an optional `validate: true` body parameter. When set:
+- **Fix**: Added optional `validate: true` body parameter to both registration endpoints.
   - For CF tokens: `GET https://api.cloudflare.com/client/v4/user/tokens/verify` with the token.
-  - For R2 creds: `GET /{endpoint}/` (ListBuckets) with the provided credentials.
-    Return a warning (not error) if validation fails, so the admin can still force-register.
-- **Status**: `[ ]`
+  - For R2 creds: `GET /{endpoint}/` (ListBuckets) with signed credentials via `aws4fetch`.
+  - Returns `warnings` array (code 422) if validation fails — credential is still registered.
+  - 10s timeout on validation probes. No probe when `validate` is absent/false.
+  - Added `validateCfToken()` and `validateR2Credentials()` in `admin-helpers.ts`.
+  - 6 new tests across `upstream-tokens.test.ts` and `upstream-r2.test.ts`.
+- **Status**: `[x]`
 
 ### 6.2 `[LOW]` No binding between API key and upstream token
 
@@ -398,8 +401,12 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
 - **Problem**: `getConfig()` + `createKey()` and `setConfig()` + `getConfig()` are
   sequential round-trips. Could be optimized by having `createKey` validate internally or
   `setConfig` return the new config.
-- **Fix**: Low priority — only affects admin latency, not hot path.
-- **Status**: `[ ]`
+- **Fix**: `setConfig()` now returns the resolved `GatewayConfig`, eliminating the second
+  `getConfig()` RPC. Same for `resetConfigKey()` which now returns `{ deleted, config }`.
+  The `createKey` pattern (`getConfig` + `createKey`) was left as-is — the config fetch is
+  needed for server-side rate limit validation before creation; moving it into the DO would
+  mix concerns for minimal benefit (both calls are fast in-memory SQLite reads).
+- **Status**: `[x]`
 
 ---
 
@@ -506,33 +513,49 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
 - **Problem**: The actual command `run()` functions with subcommand branching, formatting,
   and error handling are completely untested. Only `parsePolicy`, `formatDuration`,
   `resolveConfig`, `resolveZoneId` from `ui.ts` are tested in `cli/cli.test.ts`.
-- **Status**: `[ ]`
+- **Note**: Command `run()` functions are thin orchestration layers that call `request()` +
+  `assertOk()` + `formatKey()`/`printJson()` etc. Now that the underlying functions are all
+  tested (12.2, 12.3), the remaining risk is minimal. Full command integration tests would
+  require mocking the HTTP layer end-to-end, which is better covered by the smoke tests.
+- **Status**: `[-]` (deferred — underlying functions now tested, smoke tests cover integration)
 
 ### 12.2 `[MEDIUM]` `cli/client.ts` is untested
 
 - **Problem**: `request()`, `assertOk()`, spinner behavior, error formatting — no tests.
-- **Status**: `[ ]`
+- **Fix**: Added 10 tests in `cli/cli.test.ts`: `assertOk` (4 tests covering match/mismatch
+  with default and custom expected status), `request` (6 tests covering GET/POST with auth
+  headers, missing keys exit, non-JSON response handling, network error exit).
+- **Status**: `[x]`
 
 ### 12.3 `[MEDIUM]` Multiple `ui.ts` functions untested
 
 - **Problem**: `formatRateLimit`, `formatKey`, `formatPolicy`, `formatApiError`, `table`,
   `spinner`, `renderBar`, `printJson` — none tested.
-- **Status**: `[ ]`
+- **Fix**: Added 18 tests in `cli/cli.test.ts`: `formatApiError` (4), `formatKey` (3),
+  `formatPolicy` (4), `table` (2), `printJson` (2), `formatRateLimit` (3). Covers error
+  formatting, key status display (active/revoked/expired), policy rendering with compound
+  conditions, table alignment, JSON output mode, and rate limit bar rendering.
+- **Status**: `[x]`
 
 ### 12.4 `[LOW]` No multi-file token cost test
 
 - **File**: `test/purge.test.ts`
 - **Problem**: Tests single-file purge but doesn't verify that a 30-URL purge consumes 30
   tokens from the single bucket.
-- **Status**: `[ ]`
+- **Fix**: Added test "multi-file purge consumes N tokens from single bucket" in purge.test.ts.
+  Drains the single bucket to 0, then verifies a 30-URL purge is rejected with 429.
+- **Status**: `[x]`
 
 ### 12.5 `[LOW]` IAM test re-declares helpers from `test/helpers.ts`
 
 - **File**: `test/iam.test.ts`
 - **Problem**: Locally defines `wildcardPolicy()`, `hostPolicy()`, etc. that duplicate
   `test/helpers.ts`.
-- **Fix**: Import from `test/helpers.ts`.
-- **Status**: `[ ]`
+- **Fix**: Added optional `zoneId` parameter and `PolicyDocument` return types to all shared
+  policy factories in `helpers.ts`. Added `purgeEverythingPolicy()` factory. Refactored
+  `iam.test.ts` to import from `helpers.ts` with zone-bound wrappers for the local ZONE_ID.
+  Removed ~70 lines of duplicated policy factory code.
+- **Status**: `[x]`
 
 ---
 

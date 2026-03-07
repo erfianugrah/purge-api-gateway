@@ -506,19 +506,20 @@ export class Gatekeeper extends DurableObject<Env> {
 		return this.configManager.getConfig(this.env);
 	}
 
-	/** Set one or more config values and rebuild token buckets. */
-	async setConfig(updates: Record<string, number>, updatedBy?: string): Promise<void> {
+	/** Set one or more config values, rebuild token buckets, and return the resolved config. */
+	async setConfig(updates: Record<string, number>, updatedBy?: string): Promise<GatewayConfig> {
 		this.configManager.setConfig(updates, updatedBy);
 		this.rebuildBuckets();
+		return this.configManager.getConfig(this.env);
 	}
 
-	/** Reset a config key to env/default and rebuild token buckets. */
-	async resetConfigKey(key: string): Promise<boolean> {
+	/** Reset a config key to env/default, rebuild token buckets, and return { deleted, config }. */
+	async resetConfigKey(key: string): Promise<{ deleted: boolean; config: GatewayConfig }> {
 		const deleted = this.configManager.resetKey(key);
 		if (deleted) {
 			this.rebuildBuckets();
 		}
-		return deleted;
+		return { deleted, config: this.configManager.getConfig(this.env) };
 	}
 
 	/** List all config overrides stored in the registry. */
