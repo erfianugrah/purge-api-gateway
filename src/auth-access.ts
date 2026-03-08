@@ -165,33 +165,32 @@ export async function fetchAccessGroups(token: string, teamName: string): Promis
 			(body.oidc_fields as Record<string, unknown> | undefined)?.groups,
 		];
 
-		let groups: string[] = [];
+		const groups: string[] = [];
 		for (const candidate of candidates) {
 			if (!Array.isArray(candidate) || candidate.length === 0) continue;
-			// Groups can be plain strings or { id, name, email } objects
-			groups = candidate.map((g: unknown) => (typeof g === 'string' ? g : (g as AccessGroupEntry)?.name)).filter(Boolean);
-			// Deduplicate
-			groups = [...new Set(groups)];
-			break;
+			// Groups can be plain strings or { id, name, email } objects — merge all sources
+			const resolved = candidate.map((g: unknown) => (typeof g === 'string' ? g : (g as AccessGroupEntry)?.name)).filter(Boolean);
+			groups.push(...resolved);
 		}
+		// Deduplicate across all sources
+		const dedupedGroups = [...new Set(groups)];
+
+		// Log which sources contributed groups
+		const sources: string[] = [];
+		if (Array.isArray(body.groups) && body.groups.length > 0) sources.push('groups');
+		if (Array.isArray((body.custom as any)?.groups) && (body.custom as any).groups.length > 0) sources.push('custom.groups');
+		if (Array.isArray((body.oidc_fields as any)?.groups) && (body.oidc_fields as any).groups.length > 0) sources.push('oidc_fields.groups');
 
 		console.log(
 			JSON.stringify({
 				breadcrumb: 'access-get-identity-ok',
-				groupCount: groups.length,
-				groups,
-				source:
-					Array.isArray(body.groups) && body.groups.length > 0
-						? 'groups'
-						: Array.isArray((body.custom as any)?.groups) && (body.custom as any).groups.length > 0
-							? 'custom.groups'
-							: Array.isArray((body.oidc_fields as any)?.groups) && (body.oidc_fields as any).groups.length > 0
-								? 'oidc_fields.groups'
-								: 'none',
+				groupCount: dedupedGroups.length,
+				groups: dedupedGroups,
+				sources: sources.length > 0 ? sources : ['none'],
 			}),
 		);
 
-		return groups;
+		return dedupedGroups;
 	} catch (e: any) {
 		console.log(
 			JSON.stringify({

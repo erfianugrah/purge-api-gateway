@@ -209,16 +209,20 @@ export class Gatekeeper extends DurableObject<Env> {
 
 		let buckets = this.keyBuckets.get(keyId);
 		if (!buckets) {
-			// Evict oldest entry if at capacity to prevent unbounded memory growth
+			// Evict least-recently-used entry if at capacity to prevent unbounded memory growth
 			if (this.keyBuckets.size >= Gatekeeper.MAX_KEY_BUCKETS) {
-				const oldest = this.keyBuckets.keys().next().value!;
-				this.keyBuckets.delete(oldest);
+				const lru = this.keyBuckets.keys().next().value!;
+				this.keyBuckets.delete(lru);
 			}
 			const gwConfig = this.configManager.getConfig(this.env);
 			buckets = {
 				bulk: new TokenBucket(key.bulk_rate ?? gwConfig.bulk_rate, key.bulk_bucket ?? gwConfig.bulk_bucket_size),
 				single: new TokenBucket(key.single_rate ?? gwConfig.single_rate, key.single_bucket ?? gwConfig.single_bucket_size),
 			};
+			this.keyBuckets.set(keyId, buckets);
+		} else {
+			// Move to end of Map for LRU eviction — most recently used keys are last
+			this.keyBuckets.delete(keyId);
 			this.keyBuckets.set(keyId, buckets);
 		}
 
@@ -423,6 +427,11 @@ export class Gatekeeper extends DurableObject<Env> {
 
 	async authorizeFromBody(keyId: string, zoneId: string, body: PurgeBody, requestFields?: Record<string, string>): Promise<AuthResult> {
 		return this.iam.authorizeFromBody(keyId, zoneId, body, requestFields);
+	}
+
+	/** Generic policy authorization — takes pre-built RequestContexts directly. Used by DNS and future services. */
+	async authorize(keyId: string, zoneId: string, contexts: RequestContext[]): Promise<AuthResult> {
+		return this.iam.authorize(keyId, zoneId, contexts);
 	}
 
 	async createKey(req: CreateKeyRequest): Promise<{ key: ApiKey }> {

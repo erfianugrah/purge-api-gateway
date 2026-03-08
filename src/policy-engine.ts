@@ -167,20 +167,36 @@ function evalNumeric(fieldValue: string | boolean, condValue: ConditionValue, cm
 	return cmp(a, b);
 }
 
+/** Cache of compiled regexes keyed by pattern string. Avoids recompilation on every evaluation. */
+const REGEX_CACHE = new Map<string, RegExp | null>();
+const MAX_REGEX_CACHE_SIZE = 256;
+
 /**
  * Evaluate a regex match. Returns the match result, optionally negated.
+ * Compiled regexes are cached per-isolate to avoid repeated compilation for hot policies.
  */
 function evalRegex(fieldValue: string | boolean, pattern: ConditionValue, negate: boolean): boolean {
 	if (typeof fieldValue !== 'string' || typeof pattern !== 'string') return false;
-	try {
-		const re = new RegExp(pattern);
-		const result = re.test(fieldValue);
-		return negate ? !result : result;
-	} catch {
-		// Invalid regex — condition fails (should have been caught at validation time)
-		console.log(JSON.stringify({ breadcrumb: 'policy-invalid-regex', pattern }));
-		return false;
+
+	let re = REGEX_CACHE.get(pattern);
+	if (re === undefined) {
+		try {
+			re = new RegExp(pattern);
+		} catch {
+			console.log(JSON.stringify({ breadcrumb: 'policy-invalid-regex', pattern }));
+			re = null;
+		}
+		// Evict oldest entry if at capacity
+		if (REGEX_CACHE.size >= MAX_REGEX_CACHE_SIZE) {
+			const first = REGEX_CACHE.keys().next().value!;
+			REGEX_CACHE.delete(first);
+		}
+		REGEX_CACHE.set(pattern, re);
 	}
+
+	if (re === null) return false;
+	const result = re.test(fieldValue);
+	return negate ? !result : result;
 }
 
 /**

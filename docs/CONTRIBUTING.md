@@ -51,6 +51,11 @@ This guide covers development setup, code conventions, testing, and the workflow
    GATEKEEPER_ADMIN_KEY=
    GATEKEEPER_API_KEY=
    GATEKEEPER_ZONE_ID=
+   UPSTREAM_PURGE_KEY=           # CF API token with Cache Purge permission (smoke tests)
+   DNS_TEST_TOKEN=               # CF API token with DNS:Edit permission (DNS smoke tests)
+   R2_TEST_ACCESS_KEY=           # R2 access key (S3 smoke tests)
+   R2_TEST_SECRET_KEY=           # R2 secret key (S3 smoke tests)
+   R2_TEST_ENDPOINT=             # R2 endpoint URL (S3 smoke tests)
    ```
 
 5. **Generate TypeScript types** for Cloudflare bindings:
@@ -77,6 +82,7 @@ gatekeeper/
     index.ts           Main entrypoint -- Hono app, security headers, cron handler
     durable-object.ts  Gatekeeper DO class (key/config/credential storage)
     routes/            Hono sub-apps: admin-keys, admin-config, admin-analytics, purge, etc.
+    dns/               DNS Records API proxy: routes, operations, analytics
     s3/                S3-compatible proxy: routes, SigV4, IAM, XML handling
     schema.ts          D1 table DDL (CREATE TABLE IF NOT EXISTS)
     types.ts           Shared TypeScript types

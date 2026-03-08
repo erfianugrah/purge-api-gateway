@@ -30,12 +30,7 @@ export interface PurgeEvent {
 }
 
 async function ensureTables(db: D1Database): Promise<void> {
-	try {
-		await db.batch([db.prepare(PURGE_EVENTS_TABLE_SQL), db.prepare(PURGE_EVENTS_INDEX_ZONE_SQL), db.prepare(PURGE_EVENTS_INDEX_KEY_SQL)]);
-	} catch (e: any) {
-		console.log(JSON.stringify({ breadcrumb: 'analytics-ensure-tables-failed', error: e.message }));
-		throw e;
-	}
+	await db.batch([db.prepare(PURGE_EVENTS_TABLE_SQL), db.prepare(PURGE_EVENTS_INDEX_ZONE_SQL), db.prepare(PURGE_EVENTS_INDEX_KEY_SQL)]);
 }
 
 /**

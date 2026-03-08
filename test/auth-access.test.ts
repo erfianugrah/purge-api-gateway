@@ -443,7 +443,7 @@ describe('fetchAccessGroups', () => {
 		expect(groups).toEqual(['ops-team', 'viewer-team']);
 	});
 
-	it('prefers top-level groups over custom.groups', async () => {
+	it('merges groups from all sources (top-level + custom + oidc_fields)', async () => {
 		fetchMock
 			.get(CERTS_URL)
 			.intercept({ path: '/cdn-cgi/access/get-identity' })
@@ -456,7 +456,7 @@ describe('fetchAccessGroups', () => {
 			);
 
 		const groups = await fetchAccessGroups('fake-jwt', TEAM_NAME);
-		expect(groups).toEqual(['from-scim']);
+		expect(groups).toEqual(['from-scim', 'from-oidc']);
 	});
 });
 
