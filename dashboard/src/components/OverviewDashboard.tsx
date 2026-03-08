@@ -15,6 +15,8 @@ import {
 	Database,
 	Clock,
 	ArrowRight,
+	ChevronDown,
+	ChevronRight,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -254,6 +256,7 @@ export function OverviewDashboard() {
 	});
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
+	const [chartsOpen, setChartsOpen] = useState(true);
 
 	const fetchData = useCallback(async () => {
 		setLoading(true);
@@ -488,221 +491,237 @@ export function OverviewDashboard() {
 							/>
 						</div>
 
-						{/* Row 3: Charts — Traffic split + Status breakdown */}
-						<div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-							{/* Traffic split pie */}
-							<Card>
-								<CardHeader>
-									<CardTitle className={T.sectionHeading}>Traffic Split</CardTitle>
-								</CardHeader>
-								<CardContent>
-									{trafficPie.length === 0 ? (
-										<p className={cn(T.muted, 'py-12 text-center')}>No data</p>
-									) : (
-										<ResponsiveContainer width="100%" height={260}>
-											<PieChart>
-												<Pie
-													data={trafficPie}
-													cx="50%"
-													cy="50%"
-													innerRadius={60}
-													outerRadius={100}
-													paddingAngle={4}
-													dataKey="value"
-													nameKey="name"
-													label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-													labelLine={false}
-													fontSize={T.chartLabel}
-												>
-													{trafficPie.map((entry) => (
-														<Cell key={entry.name} fill={TRAFFIC_COLORS[entry.name] ?? '#8796f4'} />
-													))}
-												</Pie>
-												<Tooltip
-													contentStyle={CHART_TOOLTIP_STYLE.contentStyle}
-													itemStyle={CHART_TOOLTIP_STYLE.itemStyle}
-													labelStyle={CHART_TOOLTIP_STYLE.labelStyle}
-												/>
-											</PieChart>
-										</ResponsiveContainer>
+						{/* Collapsible Analytics Breakdown */}
+						<button
+							onClick={() => setChartsOpen(!chartsOpen)}
+							className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+						>
+							{chartsOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+							Analytics Breakdown
+						</button>
+
+						{chartsOpen && (
+							<>
+								{/* Row 3: Charts — Traffic split + Status breakdown */}
+								<div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+									{/* Traffic split pie */}
+									<Card>
+										<CardHeader>
+											<CardTitle className={T.sectionHeading}>Traffic Split</CardTitle>
+										</CardHeader>
+										<CardContent>
+											{trafficPie.length === 0 ? (
+												<p className={cn(T.muted, 'py-12 text-center')}>No data</p>
+											) : (
+												<ResponsiveContainer width="100%" height={260}>
+													<PieChart>
+														<Pie
+															data={trafficPie}
+															cx="50%"
+															cy="50%"
+															innerRadius={60}
+															outerRadius={100}
+															paddingAngle={4}
+															dataKey="value"
+															nameKey="name"
+															label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+															labelLine={false}
+															fontSize={T.chartLabel}
+														>
+															{trafficPie.map((entry) => (
+																<Cell key={entry.name} fill={TRAFFIC_COLORS[entry.name] ?? '#8796f4'} />
+															))}
+														</Pie>
+														<Tooltip
+															contentStyle={CHART_TOOLTIP_STYLE.contentStyle}
+															itemStyle={CHART_TOOLTIP_STYLE.itemStyle}
+															labelStyle={CHART_TOOLTIP_STYLE.labelStyle}
+														/>
+													</PieChart>
+												</ResponsiveContainer>
+											)}
+										</CardContent>
+									</Card>
+
+									{/* Combined status breakdown */}
+									<Card>
+										<CardHeader>
+											<CardTitle className={T.sectionHeading}>Status Breakdown</CardTitle>
+										</CardHeader>
+										<CardContent>
+											{barData.length === 0 ? (
+												<p className={cn(T.muted, 'py-12 text-center')}>No data</p>
+											) : (
+												<ResponsiveContainer width="100%" height={260}>
+													<BarChart data={barData} layout="vertical" margin={{ top: 0, right: 12, bottom: 0, left: 8 }}>
+														<XAxis type="number" tick={{ fontSize: T.chartAxisTick, fill: '#bdbdc1' }} />
+														<YAxis type="category" dataKey="status" tick={{ fontSize: T.chartAxisTick, fill: '#bdbdc1' }} width={40} />
+														<Tooltip
+															contentStyle={CHART_TOOLTIP_STYLE.contentStyle}
+															itemStyle={CHART_TOOLTIP_STYLE.itemStyle}
+															labelStyle={CHART_TOOLTIP_STYLE.labelStyle}
+															formatter={(value: number) => [formatNumber(value), 'Requests']}
+														/>
+														<Bar dataKey="count" radius={[0, 4, 4, 0]}>
+															{barData.map((entry) => (
+																<Cell key={entry.status} fill={statusColor(entry.status)} />
+															))}
+														</Bar>
+													</BarChart>
+												</ResponsiveContainer>
+											)}
+										</CardContent>
+									</Card>
+								</div>
+
+								{/* Row 4: Purge types + S3 operations */}
+								<div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+									{/* Purge type distribution */}
+									{purgeTotal > 0 && (
+										<Card>
+											<CardHeader>
+												<CardTitle className={T.sectionHeading}>Purge Type Distribution</CardTitle>
+											</CardHeader>
+											<CardContent>
+												{purgeTypePie.length === 0 ? (
+													<p className={cn(T.muted, 'py-12 text-center')}>No data</p>
+												) : (
+													<ResponsiveContainer width="100%" height={260}>
+														<PieChart>
+															<Pie
+																data={purgeTypePie}
+																cx="50%"
+																cy="50%"
+																innerRadius={60}
+																outerRadius={100}
+																paddingAngle={4}
+																dataKey="value"
+																nameKey="name"
+																label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+																labelLine={false}
+																fontSize={T.chartLabel}
+															>
+																{purgeTypePie.map((entry) => (
+																	<Cell
+																		key={entry.name}
+																		fill={PURGE_TYPE_COLORS[entry.name as keyof typeof PURGE_TYPE_COLORS] ?? '#8796f4'}
+																	/>
+																))}
+															</Pie>
+															<Tooltip
+																contentStyle={CHART_TOOLTIP_STYLE.contentStyle}
+																itemStyle={CHART_TOOLTIP_STYLE.itemStyle}
+																labelStyle={CHART_TOOLTIP_STYLE.labelStyle}
+															/>
+														</PieChart>
+													</ResponsiveContainer>
+												)}
+											</CardContent>
+										</Card>
 									)}
-								</CardContent>
-							</Card>
 
-							{/* Combined status breakdown */}
-							<Card>
-								<CardHeader>
-									<CardTitle className={T.sectionHeading}>Status Breakdown</CardTitle>
-								</CardHeader>
-								<CardContent>
-									{barData.length === 0 ? (
-										<p className={cn(T.muted, 'py-12 text-center')}>No data</p>
-									) : (
-										<ResponsiveContainer width="100%" height={260}>
-											<BarChart data={barData} layout="vertical" margin={{ top: 0, right: 12, bottom: 0, left: 8 }}>
-												<XAxis type="number" tick={{ fontSize: T.chartAxisTick, fill: '#bdbdc1' }} />
-												<YAxis type="category" dataKey="status" tick={{ fontSize: T.chartAxisTick, fill: '#bdbdc1' }} width={40} />
-												<Tooltip
-													contentStyle={CHART_TOOLTIP_STYLE.contentStyle}
-													itemStyle={CHART_TOOLTIP_STYLE.itemStyle}
-													labelStyle={CHART_TOOLTIP_STYLE.labelStyle}
-													formatter={(value: number) => [formatNumber(value), 'Requests']}
-												/>
-												<Bar dataKey="count" radius={[0, 4, 4, 0]}>
-													{barData.map((entry) => (
-														<Cell key={entry.status} fill={statusColor(entry.status)} />
-													))}
-												</Bar>
-											</BarChart>
-										</ResponsiveContainer>
+									{/* S3 operations breakdown */}
+									{s3Total > 0 && (
+										<Card>
+											<CardHeader>
+												<CardTitle className={T.sectionHeading}>S3 Operations</CardTitle>
+											</CardHeader>
+											<CardContent>
+												{s3OpPie.length === 0 ? (
+													<p className={cn(T.muted, 'py-12 text-center')}>No data</p>
+												) : (
+													<ResponsiveContainer width="100%" height={260}>
+														<BarChart data={s3OpPie} layout="vertical" margin={{ top: 0, right: 12, bottom: 0, left: 8 }}>
+															<XAxis type="number" tick={{ fontSize: T.chartAxisTick, fill: '#bdbdc1' }} />
+															<YAxis type="category" dataKey="name" tick={{ fontSize: T.chartAxisTick, fill: '#bdbdc1' }} width={100} />
+															<Tooltip
+																contentStyle={CHART_TOOLTIP_STYLE.contentStyle}
+																itemStyle={CHART_TOOLTIP_STYLE.itemStyle}
+																labelStyle={CHART_TOOLTIP_STYLE.labelStyle}
+																formatter={(value: number) => [formatNumber(value), 'Requests']}
+															/>
+															<Bar dataKey="value" radius={[0, 4, 4, 0]}>
+																{s3OpPie.map((entry, i) => (
+																	<Cell key={entry.name} fill={CHART_PALETTE[i % CHART_PALETTE.length]} />
+																))}
+															</Bar>
+														</BarChart>
+													</ResponsiveContainer>
+												)}
+											</CardContent>
+										</Card>
 									)}
-								</CardContent>
-							</Card>
-						</div>
 
-						{/* Row 4: Purge types + S3 operations */}
-						<div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-							{/* Purge type distribution */}
-							{purgeTotal > 0 && (
-								<Card>
-									<CardHeader>
-										<CardTitle className={T.sectionHeading}>Purge Type Distribution</CardTitle>
-									</CardHeader>
-									<CardContent>
-										{purgeTypePie.length === 0 ? (
-											<p className={cn(T.muted, 'py-12 text-center')}>No data</p>
-										) : (
-											<ResponsiveContainer width="100%" height={260}>
-												<PieChart>
-													<Pie
-														data={purgeTypePie}
-														cx="50%"
-														cy="50%"
-														innerRadius={60}
-														outerRadius={100}
-														paddingAngle={4}
-														dataKey="value"
-														nameKey="name"
-														label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-														labelLine={false}
-														fontSize={T.chartLabel}
-													>
-														{purgeTypePie.map((entry) => (
-															<Cell key={entry.name} fill={PURGE_TYPE_COLORS[entry.name as keyof typeof PURGE_TYPE_COLORS] ?? '#8796f4'} />
-														))}
-													</Pie>
-													<Tooltip
-														contentStyle={CHART_TOOLTIP_STYLE.contentStyle}
-														itemStyle={CHART_TOOLTIP_STYLE.itemStyle}
-														labelStyle={CHART_TOOLTIP_STYLE.labelStyle}
-													/>
-												</PieChart>
-											</ResponsiveContainer>
-										)}
-									</CardContent>
-								</Card>
-							)}
-
-							{/* S3 operations breakdown */}
-							{s3Total > 0 && (
-								<Card>
-									<CardHeader>
-										<CardTitle className={T.sectionHeading}>S3 Operations</CardTitle>
-									</CardHeader>
-									<CardContent>
-										{s3OpPie.length === 0 ? (
-											<p className={cn(T.muted, 'py-12 text-center')}>No data</p>
-										) : (
-											<ResponsiveContainer width="100%" height={260}>
-												<BarChart data={s3OpPie} layout="vertical" margin={{ top: 0, right: 12, bottom: 0, left: 8 }}>
-													<XAxis type="number" tick={{ fontSize: T.chartAxisTick, fill: '#bdbdc1' }} />
-													<YAxis type="category" dataKey="name" tick={{ fontSize: T.chartAxisTick, fill: '#bdbdc1' }} width={100} />
-													<Tooltip
-														contentStyle={CHART_TOOLTIP_STYLE.contentStyle}
-														itemStyle={CHART_TOOLTIP_STYLE.itemStyle}
-														labelStyle={CHART_TOOLTIP_STYLE.labelStyle}
-														formatter={(value: number) => [formatNumber(value), 'Requests']}
-													/>
-													<Bar dataKey="value" radius={[0, 4, 4, 0]}>
-														{s3OpPie.map((entry, i) => (
-															<Cell key={entry.name} fill={CHART_PALETTE[i % CHART_PALETTE.length]} />
-														))}
-													</Bar>
-												</BarChart>
-											</ResponsiveContainer>
-										)}
-									</CardContent>
-								</Card>
-							)}
-
-							{/* S3 bucket breakdown */}
-							{s3Total > 0 && s3BucketPie.length > 0 && (
-								<Card>
-									<CardHeader>
-										<CardTitle className={T.sectionHeading}>S3 Requests by Bucket</CardTitle>
-									</CardHeader>
-									<CardContent>
-										<ResponsiveContainer width="100%" height={260}>
-											<PieChart>
-												<Pie
-													data={s3BucketPie}
-													cx="50%"
-													cy="50%"
-													innerRadius={60}
-													outerRadius={100}
-													paddingAngle={4}
-													dataKey="value"
-													nameKey="name"
-													label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-													labelLine={false}
-													fontSize={T.chartLabel}
-												>
-													{s3BucketPie.map((entry, i) => (
-														<Cell key={entry.name} fill={CHART_PALETTE[i % CHART_PALETTE.length]} />
-													))}
-												</Pie>
-												<Tooltip
-													contentStyle={CHART_TOOLTIP_STYLE.contentStyle}
-													itemStyle={CHART_TOOLTIP_STYLE.itemStyle}
-													labelStyle={CHART_TOOLTIP_STYLE.labelStyle}
-												/>
-											</PieChart>
-										</ResponsiveContainer>
-									</CardContent>
-								</Card>
-							)}
-							{/* DNS actions breakdown */}
-							{dnsTotal > 0 && (
-								<Card>
-									<CardHeader>
-										<CardTitle className={T.sectionHeading}>DNS Actions</CardTitle>
-									</CardHeader>
-									<CardContent>
-										{dnsActionPie.length === 0 ? (
-											<p className={cn(T.muted, 'py-12 text-center')}>No data</p>
-										) : (
-											<ResponsiveContainer width="100%" height={260}>
-												<BarChart data={dnsActionPie} layout="vertical" margin={{ top: 0, right: 12, bottom: 0, left: 8 }}>
-													<XAxis type="number" tick={{ fontSize: T.chartAxisTick, fill: '#bdbdc1' }} />
-													<YAxis type="category" dataKey="name" tick={{ fontSize: T.chartAxisTick, fill: '#bdbdc1' }} width={100} />
-													<Tooltip
-														contentStyle={CHART_TOOLTIP_STYLE.contentStyle}
-														itemStyle={CHART_TOOLTIP_STYLE.itemStyle}
-														labelStyle={CHART_TOOLTIP_STYLE.labelStyle}
-														formatter={(value: number) => [formatNumber(value), 'Requests']}
-													/>
-													<Bar dataKey="value" radius={[0, 4, 4, 0]}>
-														{dnsActionPie.map((entry, i) => (
-															<Cell key={entry.name} fill={CHART_PALETTE[i % CHART_PALETTE.length]} />
-														))}
-													</Bar>
-												</BarChart>
-											</ResponsiveContainer>
-										)}
-									</CardContent>
-								</Card>
-							)}
-						</div>
+									{/* S3 bucket breakdown */}
+									{s3Total > 0 && s3BucketPie.length > 0 && (
+										<Card>
+											<CardHeader>
+												<CardTitle className={T.sectionHeading}>S3 Requests by Bucket</CardTitle>
+											</CardHeader>
+											<CardContent>
+												<ResponsiveContainer width="100%" height={260}>
+													<PieChart>
+														<Pie
+															data={s3BucketPie}
+															cx="50%"
+															cy="50%"
+															innerRadius={60}
+															outerRadius={100}
+															paddingAngle={4}
+															dataKey="value"
+															nameKey="name"
+															label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+															labelLine={false}
+															fontSize={T.chartLabel}
+														>
+															{s3BucketPie.map((entry, i) => (
+																<Cell key={entry.name} fill={CHART_PALETTE[i % CHART_PALETTE.length]} />
+															))}
+														</Pie>
+														<Tooltip
+															contentStyle={CHART_TOOLTIP_STYLE.contentStyle}
+															itemStyle={CHART_TOOLTIP_STYLE.itemStyle}
+															labelStyle={CHART_TOOLTIP_STYLE.labelStyle}
+														/>
+													</PieChart>
+												</ResponsiveContainer>
+											</CardContent>
+										</Card>
+									)}
+									{/* DNS actions breakdown */}
+									{dnsTotal > 0 && (
+										<Card>
+											<CardHeader>
+												<CardTitle className={T.sectionHeading}>DNS Actions</CardTitle>
+											</CardHeader>
+											<CardContent>
+												{dnsActionPie.length === 0 ? (
+													<p className={cn(T.muted, 'py-12 text-center')}>No data</p>
+												) : (
+													<ResponsiveContainer width="100%" height={260}>
+														<BarChart data={dnsActionPie} layout="vertical" margin={{ top: 0, right: 12, bottom: 0, left: 8 }}>
+															<XAxis type="number" tick={{ fontSize: T.chartAxisTick, fill: '#bdbdc1' }} />
+															<YAxis type="category" dataKey="name" tick={{ fontSize: T.chartAxisTick, fill: '#bdbdc1' }} width={100} />
+															<Tooltip
+																contentStyle={CHART_TOOLTIP_STYLE.contentStyle}
+																itemStyle={CHART_TOOLTIP_STYLE.itemStyle}
+																labelStyle={CHART_TOOLTIP_STYLE.labelStyle}
+																formatter={(value: number) => [formatNumber(value), 'Requests']}
+															/>
+															<Bar dataKey="value" radius={[0, 4, 4, 0]}>
+																{dnsActionPie.map((entry, i) => (
+																	<Cell key={entry.name} fill={CHART_PALETTE[i % CHART_PALETTE.length]} />
+																))}
+															</Bar>
+														</BarChart>
+													</ResponsiveContainer>
+												)}
+											</CardContent>
+										</Card>
+									)}
+								</div>
+							</>
+						)}
 
 						{/* Row 5: Recent Events */}
 						<Card>

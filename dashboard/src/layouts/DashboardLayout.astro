@@ -19,8 +19,18 @@ const navLinks = [
   { id: "settings", label: "Settings", href: "/dashboard/settings", icon: "settings", section: "System" },
 ];
 
-// Track which sections we've already rendered a header for
-const seenSections = new Set<string>();
+// Group nav links by section for collapsible rendering
+const standaloneLinks = navLinks.filter((l) => !l.section);
+const sectionOrder: string[] = [];
+const sectionMap = new Map<string, typeof navLinks>();
+for (const link of navLinks) {
+  if (!link.section) continue;
+  if (!sectionMap.has(link.section)) {
+    sectionOrder.push(link.section);
+    sectionMap.set(link.section, []);
+  }
+  sectionMap.get(link.section)!.push(link);
+}
 ---
 
 <!doctype html>
@@ -64,156 +74,112 @@ const seenSections = new Set<string>();
 
           <!-- Navigation -->
           <nav class="flex-1 space-y-1 px-2 py-4">
-            {
-              navLinks.map((link) => {
-                const showHeader = link.section && !seenSections.has(link.section);
-                if (showHeader) seenSections.add(link.section);
-                return (
-                  <>
-                    {showHeader && (
-                      <div class="px-3 pt-4 pb-1">
-                        <span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
-                          {link.section}
-                        </span>
-                      </div>
-                    )}
-                    <a
-                      href={link.href}
-                      class:list={[
-                        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
-                        active === link.id
-                          ? "bg-lv-purple/10 text-lv-purple"
-                          : "text-muted-foreground hover:bg-accent hover:text-foreground",
-                      ]}
+            {/* Standalone links (no section) */}
+            {standaloneLinks.map((link) => (
+              <a
+                href={link.href}
+                class:list={[
+                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+                  active === link.id
+                    ? "bg-lv-purple/10 text-lv-purple"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                ]}
+              >
+                {link.icon === "grid" && (
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
+                    <rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
+                  </svg>
+                )}
+                <span>{link.label}</span>
+              </a>
+            ))}
+
+            {/* Collapsible sections */}
+            {sectionOrder.map((section) => {
+              const links = sectionMap.get(section)!;
+              const hasActive = links.some((l) => l.id === active);
+              return (
+                <div class="nav-section" data-section={section}>
+                  <button
+                    class="nav-section-toggle flex w-full items-center gap-1.5 px-3 pt-4 pb-1 group"
+                    type="button"
+                    data-section={section}
+                  >
+                    <svg
+                      class="nav-chevron h-3 w-3 text-muted-foreground/60 transition-transform"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
                     >
-                      {/* Grid / Overview */}
-                      {link.icon === "grid" && (
-                        <svg
-                          class="h-4 w-4"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                        >
-                          <rect x="3" y="3" width="7" height="7" />
-                          <rect x="14" y="3" width="7" height="7" />
-                          <rect x="3" y="14" width="7" height="7" />
-                          <rect x="14" y="14" width="7" height="7" />
-                        </svg>
-                      )}
-                      {/* Key */}
-                      {link.icon === "key" && (
-                        <svg
-                          class="h-4 w-4"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                        >
-                          <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
-                        </svg>
-                      )}
-                      {/* List / Analytics */}
-                      {link.icon === "list" && (
-                        <svg
-                          class="h-4 w-4"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                        >
-                          <line x1="8" y1="6" x2="21" y2="6" />
-                          <line x1="8" y1="12" x2="21" y2="12" />
-                          <line x1="8" y1="18" x2="21" y2="18" />
-                          <line x1="3" y1="6" x2="3.01" y2="6" />
-                          <line x1="3" y1="12" x2="3.01" y2="12" />
-                          <line x1="3" y1="18" x2="3.01" y2="18" />
-                        </svg>
-                      )}
-                      {/* Zap / Purge */}
-                      {link.icon === "zap" && (
-                        <svg
-                          class="h-4 w-4"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                        >
-                          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                        </svg>
-                      )}
-                      {/* S3 / Cloud Storage */}
-                      {link.icon === "s3" && (
-                        <svg
-                          class="h-4 w-4"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                        >
-                          <path d="M4 22h14a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v4" />
-                          <path d="M14 2v5h5" />
-                          <path d="M3 15h6" />
-                          <path d="M6 12l-3 3 3 3" />
-                        </svg>
-                      )}
-                      {/* Token / Shield */}
-                      {link.icon === "token" && (
-                        <svg
-                          class="h-4 w-4"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                        >
-                          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                        </svg>
-                      )}
-                      {/* Bucket / Database */}
-                      {link.icon === "bucket" && (
-                        <svg
-                          class="h-4 w-4"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                        >
-                          <ellipse cx="12" cy="5" rx="9" ry="3" />
-                          <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
-                          <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
-                        </svg>
-                      )}
-                      {/* Settings / Gear */}
-                      {link.icon === "settings" && (
-                        <svg
-                          class="h-4 w-4"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                        >
-                          <circle cx="12" cy="12" r="3" />
-                          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                        </svg>
-                      )}
-                      <span>{link.label}</span>
-                    </a>
-                  </>
-                );
-              })
-            }
+                      <polyline points="9 18 15 12 9 6" />
+                    </svg>
+                    <span class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 group-hover:text-muted-foreground transition-colors">
+                      {section}
+                    </span>
+                  </button>
+                  <div class="nav-section-links" data-section={section} data-has-active={hasActive ? "true" : "false"}>
+                    {links.map((link) => (
+                      <a
+                        href={link.href}
+                        class:list={[
+                          "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+                          active === link.id
+                            ? "bg-lv-purple/10 text-lv-purple"
+                            : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                        ]}
+                      >
+                        {link.icon === "key" && (
+                          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
+                          </svg>
+                        )}
+                        {link.icon === "list" && (
+                          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" />
+                            <line x1="8" y1="18" x2="21" y2="18" /><line x1="3" y1="6" x2="3.01" y2="6" />
+                            <line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
+                          </svg>
+                        )}
+                        {link.icon === "zap" && (
+                          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                          </svg>
+                        )}
+                        {link.icon === "s3" && (
+                          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4 22h14a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v4" />
+                            <path d="M14 2v5h5" /><path d="M3 15h6" /><path d="M6 12l-3 3 3 3" />
+                          </svg>
+                        )}
+                        {link.icon === "token" && (
+                          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                          </svg>
+                        )}
+                        {link.icon === "bucket" && (
+                          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <ellipse cx="12" cy="5" rx="9" ry="3" />
+                            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+                            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+                          </svg>
+                        )}
+                        {link.icon === "settings" && (
+                          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="3" />
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                          </svg>
+                        )}
+                        <span>{link.label}</span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </nav>
 
           <!-- User / Footer -->
@@ -396,6 +362,55 @@ const seenSections = new Set<string>();
         } catch {
           // Silently fail — user just won't see identity
         }
+      })();
+    </script>
+
+    <!-- Collapsible sidebar sections -->
+    <script>
+      (function () {
+        const STORAGE_KEY = "gk-nav-collapsed";
+        let collapsed: Set<string>;
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          collapsed = raw ? new Set(JSON.parse(raw)) : new Set();
+        } catch {
+          collapsed = new Set();
+        }
+
+        function persist() {
+          try { localStorage.setItem(STORAGE_KEY, JSON.stringify([...collapsed])); } catch {}
+        }
+
+        function applyState(section: string) {
+          const linksEl = document.querySelector<HTMLElement>(`.nav-section-links[data-section="${section}"]`);
+          const chevron = document.querySelector<SVGElement>(`.nav-section[data-section="${section}"] .nav-chevron`);
+          if (!linksEl) return;
+          if (collapsed.has(section)) {
+            linksEl.style.display = "none";
+            if (chevron) chevron.style.transform = "rotate(0deg)";
+          } else {
+            linksEl.style.display = "";
+            if (chevron) chevron.style.transform = "rotate(90deg)";
+          }
+        }
+
+        // Apply initial state — never collapse a section containing the active link
+        document.querySelectorAll<HTMLElement>(".nav-section-links").forEach((el) => {
+          const section = el.dataset.section!;
+          if (el.dataset.hasActive === "true") collapsed.delete(section);
+          applyState(section);
+        });
+
+        // Attach toggle handlers
+        document.querySelectorAll<HTMLButtonElement>(".nav-section-toggle").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const section = btn.dataset.section!;
+            if (collapsed.has(section)) collapsed.delete(section);
+            else collapsed.add(section);
+            persist();
+            applyState(section);
+          });
+        });
       })();
     </script>
 

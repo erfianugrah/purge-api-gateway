@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Save, RotateCcw, Loader2, Pencil, X } from 'lucide-react';
+import { Save, RotateCcw, Loader2, Pencil, X, ChevronDown, ChevronRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -128,6 +128,16 @@ export function SettingsPage() {
 	const [editValue, setEditValue] = useState('');
 	const [saving, setSaving] = useState(false);
 	const [resettingKey, setResettingKey] = useState<string | null>(null);
+	const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+
+	const toggleSection = (section: string) => {
+		setCollapsedSections((prev) => {
+			const next = new Set(prev);
+			if (next.has(section)) next.delete(section);
+			else next.add(section);
+			return next;
+		});
+	};
 
 	const fetchConfig = useCallback(async () => {
 		setLoading(true);
@@ -246,154 +256,167 @@ export function SettingsPage() {
 			{!loading && config && (
 				<TooltipProvider>
 					<div className="space-y-6">
-						{sections.map(({ section, keys }) => (
-							<Card key={section}>
-								<CardHeader>
-									<CardTitle className={T.sectionHeading}>{section}</CardTitle>
-								</CardHeader>
-								<CardContent className="p-0">
-									<Table>
-										<TableHeader>
-											<TableRow>
-												<TableHead className={T.sectionLabel}>Setting</TableHead>
-												<TableHead className={T.sectionLabel}>Value</TableHead>
-												<TableHead className={T.sectionLabel}>Default</TableHead>
-												<TableHead className={T.sectionLabel}>Source</TableHead>
-												<TableHead className={T.sectionLabel}>Last Updated</TableHead>
-												<TableHead className="text-right">
-													<span className={T.sectionLabel}>Actions</span>
-												</TableHead>
-											</TableRow>
-										</TableHeader>
-										<TableBody>
-											{keys.map((key) => {
-												const meta = CONFIG_META[key];
-												const currentValue = (config as unknown as Record<string, number>)[key];
-												const defaultValue = defaults[key];
-												const override = overrideMap.get(key);
-												const isOverridden = !!override;
-												const isEditing = editingKey === key;
-
-												return (
-													<TableRow key={key}>
-														<TableCell>
-															<Tooltip>
-																<TooltipTrigger asChild>
-																	<div>
-																		<div className={T.tableRowName}>{meta.label}</div>
-																		<div className={T.muted}>{key}</div>
-																	</div>
-																</TooltipTrigger>
-																<TooltipContent side="right" className="max-w-xs">
-																	<p className="text-xs">{meta.description}</p>
-																</TooltipContent>
-															</Tooltip>
-														</TableCell>
-														<TableCell>
-															{isEditing ? (
-																<div className="flex items-center gap-2">
-																	<Input
-																		type="number"
-																		className="h-7 w-28 text-xs font-data"
-																		value={editValue}
-																		onChange={(e) => setEditValue(e.target.value)}
-																		onKeyDown={(e) => {
-																			if (e.key === 'Enter') handleSave();
-																			if (e.key === 'Escape') handleCancelEdit();
-																		}}
-																		min={1}
-																		autoFocus
-																	/>
-																	<span className={T.muted}>{meta.unit}</span>
-																</div>
-															) : (
-																<code className="text-xs font-data tabular-nums">
-																	{formatValue(currentValue, meta.unit)}
-																	<span className={T.muted}> {meta.unit}</span>
-																</code>
-															)}
-														</TableCell>
-														<TableCell>
-															<code className="text-xs font-data tabular-nums text-muted-foreground">
-																{formatValue(defaultValue, meta.unit)}
-															</code>
-														</TableCell>
-														<TableCell>
-															{isOverridden ? (
-																<Badge className="bg-lv-amber/20 text-lv-amber border-lv-amber/30">Override</Badge>
-															) : (
-																<Badge variant="outline" className="text-muted-foreground">
-																	Default
-																</Badge>
-															)}
-														</TableCell>
-														<TableCell className={T.tableCell}>
-															{override ? (
-																<div>
-																	<div>{formatDate(override.updated_at)}</div>
-																	{override.updated_by && <div className={T.muted}>{override.updated_by}</div>}
-																</div>
-															) : (
-																<span className={T.muted}>--</span>
-															)}
-														</TableCell>
-														<TableCell className="text-right">
-															<div className="flex items-center justify-end gap-1">
-																{isEditing ? (
-																	<>
-																		<Button
-																			size="xs"
-																			variant="ghost"
-																			className="text-lv-green hover:text-lv-green hover:bg-lv-green/10"
-																			onClick={handleSave}
-																			disabled={saving}
-																		>
-																			{saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-																			Save
-																		</Button>
-																		<Button size="xs" variant="ghost" onClick={handleCancelEdit}>
-																			<X className="h-3.5 w-3.5" />
-																		</Button>
-																	</>
-																) : (
-																	<>
-																		<Button
-																			size="xs"
-																			variant="ghost"
-																			className="text-muted-foreground hover:text-foreground"
-																			onClick={() => handleEdit(key)}
-																		>
-																			<Pencil className="h-3.5 w-3.5" />
-																			Edit
-																		</Button>
-																		{isOverridden && (
-																			<Button
-																				size="xs"
-																				variant="ghost"
-																				className="text-lv-amber hover:text-lv-amber hover:bg-lv-amber/10"
-																				onClick={() => handleReset(key)}
-																				disabled={resettingKey === key}
-																			>
-																				{resettingKey === key ? (
-																					<Loader2 className="h-3.5 w-3.5 animate-spin" />
-																				) : (
-																					<RotateCcw className="h-3.5 w-3.5" />
-																				)}
-																				Reset
-																			</Button>
-																		)}
-																	</>
-																)}
-															</div>
-														</TableCell>
+						{sections.map(({ section, keys }) => {
+							const isCollapsed = collapsedSections.has(section);
+							return (
+								<Card key={section}>
+									<CardHeader className="cursor-pointer hover:bg-card/80 transition-colors" onClick={() => toggleSection(section)}>
+										<div className="flex items-center gap-2">
+											{isCollapsed ? (
+												<ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+											) : (
+												<ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+											)}
+											<CardTitle className={T.sectionHeading}>{section}</CardTitle>
+											{isCollapsed && <span className="ml-auto text-xs text-muted-foreground font-data">{keys.length} settings</span>}
+										</div>
+									</CardHeader>
+									{!isCollapsed && (
+										<CardContent className="p-0">
+											<Table>
+												<TableHeader>
+													<TableRow>
+														<TableHead className={T.sectionLabel}>Setting</TableHead>
+														<TableHead className={T.sectionLabel}>Value</TableHead>
+														<TableHead className={T.sectionLabel}>Default</TableHead>
+														<TableHead className={T.sectionLabel}>Source</TableHead>
+														<TableHead className={T.sectionLabel}>Last Updated</TableHead>
+														<TableHead className="text-right">
+															<span className={T.sectionLabel}>Actions</span>
+														</TableHead>
 													</TableRow>
-												);
-											})}
-										</TableBody>
-									</Table>
-								</CardContent>
-							</Card>
-						))}
+												</TableHeader>
+												<TableBody>
+													{keys.map((key) => {
+														const meta = CONFIG_META[key];
+														const currentValue = (config as unknown as Record<string, number>)[key];
+														const defaultValue = defaults[key];
+														const override = overrideMap.get(key);
+														const isOverridden = !!override;
+														const isEditing = editingKey === key;
+
+														return (
+															<TableRow key={key}>
+																<TableCell>
+																	<Tooltip>
+																		<TooltipTrigger asChild>
+																			<div>
+																				<div className={T.tableRowName}>{meta.label}</div>
+																				<div className={T.muted}>{key}</div>
+																			</div>
+																		</TooltipTrigger>
+																		<TooltipContent side="right" className="max-w-xs">
+																			<p className="text-xs">{meta.description}</p>
+																		</TooltipContent>
+																	</Tooltip>
+																</TableCell>
+																<TableCell>
+																	{isEditing ? (
+																		<div className="flex items-center gap-2">
+																			<Input
+																				type="number"
+																				className="h-7 w-28 text-xs font-data"
+																				value={editValue}
+																				onChange={(e) => setEditValue(e.target.value)}
+																				onKeyDown={(e) => {
+																					if (e.key === 'Enter') handleSave();
+																					if (e.key === 'Escape') handleCancelEdit();
+																				}}
+																				min={1}
+																				autoFocus
+																			/>
+																			<span className={T.muted}>{meta.unit}</span>
+																		</div>
+																	) : (
+																		<code className="text-xs font-data tabular-nums">
+																			{formatValue(currentValue, meta.unit)}
+																			<span className={T.muted}> {meta.unit}</span>
+																		</code>
+																	)}
+																</TableCell>
+																<TableCell>
+																	<code className="text-xs font-data tabular-nums text-muted-foreground">
+																		{formatValue(defaultValue, meta.unit)}
+																	</code>
+																</TableCell>
+																<TableCell>
+																	{isOverridden ? (
+																		<Badge className="bg-lv-amber/20 text-lv-amber border-lv-amber/30">Override</Badge>
+																	) : (
+																		<Badge variant="outline" className="text-muted-foreground">
+																			Default
+																		</Badge>
+																	)}
+																</TableCell>
+																<TableCell className={T.tableCell}>
+																	{override ? (
+																		<div>
+																			<div>{formatDate(override.updated_at)}</div>
+																			{override.updated_by && <div className={T.muted}>{override.updated_by}</div>}
+																		</div>
+																	) : (
+																		<span className={T.muted}>--</span>
+																	)}
+																</TableCell>
+																<TableCell className="text-right">
+																	<div className="flex items-center justify-end gap-1">
+																		{isEditing ? (
+																			<>
+																				<Button
+																					size="xs"
+																					variant="ghost"
+																					className="text-lv-green hover:text-lv-green hover:bg-lv-green/10"
+																					onClick={handleSave}
+																					disabled={saving}
+																				>
+																					{saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+																					Save
+																				</Button>
+																				<Button size="xs" variant="ghost" onClick={handleCancelEdit}>
+																					<X className="h-3.5 w-3.5" />
+																				</Button>
+																			</>
+																		) : (
+																			<>
+																				<Button
+																					size="xs"
+																					variant="ghost"
+																					className="text-muted-foreground hover:text-foreground"
+																					onClick={() => handleEdit(key)}
+																				>
+																					<Pencil className="h-3.5 w-3.5" />
+																					Edit
+																				</Button>
+																				{isOverridden && (
+																					<Button
+																						size="xs"
+																						variant="ghost"
+																						className="text-lv-amber hover:text-lv-amber hover:bg-lv-amber/10"
+																						onClick={() => handleReset(key)}
+																						disabled={resettingKey === key}
+																					>
+																						{resettingKey === key ? (
+																							<Loader2 className="h-3.5 w-3.5 animate-spin" />
+																						) : (
+																							<RotateCcw className="h-3.5 w-3.5" />
+																						)}
+																						Reset
+																					</Button>
+																				)}
+																			</>
+																		)}
+																	</div>
+																</TableCell>
+															</TableRow>
+														);
+													})}
+												</TableBody>
+											</Table>
+										</CardContent>
+									)}
+								</Card>
+							);
+						})}
 					</div>
 				</TooltipProvider>
 			)}
