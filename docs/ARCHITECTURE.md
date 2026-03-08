@@ -98,7 +98,7 @@ Three client types hit the gateway:
 
 The Worker routes requests through security-header middleware, then into the authentication layer (Access JWT, admin key HMAC, or Sig V4 verification), then through the IAM policy engine, and finally to the appropriate service handler. Handlers communicate with the Durable Object for state (keys, credentials, rate limits, config) and with D1 for analytics logging. Upstream calls go to `api.cloudflare.com` (purge + DNS) or R2's S3-compatible API (storage).
 
-Static assets for the dashboard SPA are served via Workers Static Assets with SPA fallback. API routes (`/v1/*`, `/admin/*`, `/health`, `/s3/*`) are handled by the Worker via `run_worker_first`. DNS proxy routes live under `/v1/zones/:zoneId/dns_records/*` alongside the purge endpoint.
+Static assets for the dashboard SPA are served via Workers Static Assets with SPA fallback. API routes (`/v1/*`, `/admin/*`, `/health`, `/logout`, `/s3/*`) are handled by the Worker via `run_worker_first`. DNS proxy routes live under `/v1/zones/:zoneId/dns_records/*` alongside the purge endpoint.
 
 ---
 
@@ -110,7 +110,8 @@ Cloudflare Access handles **identity** (who are you?) via JWT validation. The IA
 
 - Machine clients authenticate via API key (purge + DNS) or AWS Sig V4 (S3) and skip Access entirely.
 - Human users authenticate via Access. When RBAC is configured, their role (admin/operator/viewer) is derived from IdP group memberships fetched via the Cloudflare Access get-identity endpoint. When RBAC is not configured, all authenticated users receive the admin role (backward compatible).
-- The `/admin/me` endpoint returns the current user's email, role, groups, auth method, and logout URL.
+- The `/admin/me` endpoint returns the current user's email, role, groups, auth method, and logout URL (`/logout`).
+- The `/logout` route clears the `CF_Authorization` cookie, hits the Access logout endpoint to invalidate the session, and redirects back to `/dashboard/` where Access prompts for re-authentication. This avoids stranding the user on the Access domain after sign-out.
 - This separation means the gateway does not depend on Access for machine-to-machine traffic -- only for the dashboard and admin routes.
 
 ### Single Durable Object as Aggregate Root
@@ -331,7 +332,7 @@ Workers Static Assets with `run_worker_first`:
 		"directory": "./dashboard/dist/",
 		"binding": "ASSETS",
 		"not_found_handling": "single-page-application",
-		"run_worker_first": ["/v1/*", "/admin/*", "/health", "/s3", "/s3/*"],
+		"run_worker_first": ["/v1/*", "/admin/*", "/health", "/logout", "/s3", "/s3/*"],
 	},
 }
 ```

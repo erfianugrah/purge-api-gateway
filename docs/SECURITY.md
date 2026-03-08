@@ -80,6 +80,17 @@ JWT claims used: `sub`, `email`, `iss`, `aud`, `exp`, `iat`, `type` (`app` for u
 5. Copy the **Application Audience (AUD) tag** and set it as `CF_ACCESS_AUD`
 6. Set `CF_ACCESS_TEAM_NAME` to your Cloudflare Zero Trust team name
 
+### Logout Flow
+
+Clicking "Sign out" in the dashboard navigates to `/logout`, a Worker route that:
+
+1. Expires the `CF_Authorization` cookie via `Set-Cookie: CF_Authorization=; Max-Age=0`.
+2. Fires a `fetch()` request (with `credentials: include`) to the Cloudflare Access logout endpoint (`https://<team>.cloudflareaccess.com/cdn-cgi/access/logout`) to invalidate the Access session.
+3. After a brief delay, redirects the browser to `/dashboard/`.
+4. Since the Access session is cleared and dashboard pages are served with `Cache-Control: no-store`, the redirect triggers a fresh Access authentication prompt.
+
+This avoids stranding the user on the Cloudflare Access domain after sign-out. The `/logout` page uses a relaxed CSP (`connect-src` allows the Access origin) and is itself served with `Cache-Control: no-store`.
+
 ### Design Decisions
 
 - **No `jose` library.** `crypto.subtle` does RSA verification natively. ~80 lines vs ~50KB dependency.
@@ -743,8 +754,11 @@ The dashboard pages (static HTML/JS/CSS served via Workers Static Assets) receiv
 | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Content-Security-Policy` | `default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'` |
 | `X-DNS-Prefetch-Control`  | `off`                                                                                                                                                                                                             |
+| `Cache-Control`           | `no-store`                                                                                                                                                                                                        |
 
 The CSP allows the dashboard's own scripts and styles (including inline scripts for Astro hydration), permits `fetch()` calls to same-origin `/admin/*` endpoints (`connect-src 'self'`), and blocks everything else. `frame-ancestors 'none'` is the CSP equivalent of `X-Frame-Options: DENY`.
+
+`Cache-Control: no-store` prevents the browser from caching dashboard HTML pages. This ensures that after logout, navigating back to the dashboard URL triggers a fresh network request through Cloudflare Access rather than serving a stale cached page (which would bypass the Access auth gate).
 
 ---
 

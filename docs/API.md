@@ -12,6 +12,9 @@ The machine-readable OpenAPI 3.1 specification is available at [`openapi.json`](
 - [Standard Response Envelope](#standard-response-envelope)
 - [Rate Limit Headers](#rate-limit-headers)
 - [1. System](#1-system)
+  - [GET /health](#get-health)
+  - [GET /admin/me](#get-adminme)
+  - [GET /logout](#get-logout)
 - [2. Purge](#2-purge)
 - [3. Keys](#3-keys)
 - [4. Analytics](#4-analytics)
@@ -108,6 +111,50 @@ Health check. No authentication required.
 ```json
 { "ok": true }
 ```
+
+### `GET /admin/me`
+
+Returns the current user's identity, role, and logout URL. Requires admin auth (`X-Admin-Key` or Cloudflare Access JWT).
+
+**Auth:** `X-Admin-Key` or Cloudflare Access JWT
+
+**Response `200`:**
+
+```json
+{
+	"success": true,
+	"result": {
+		"email": "alice@example.com",
+		"role": "admin",
+		"groups": ["engineering", "platform"],
+		"authMethod": "access",
+		"logoutUrl": "/logout"
+	}
+}
+```
+
+| Field        | Type           | Description                                                                  |
+| ------------ | -------------- | ---------------------------------------------------------------------------- |
+| `email`      | string \| null | User email from the Access JWT. `null` when authenticated via `X-Admin-Key`. |
+| `role`       | string         | Resolved RBAC role: `admin`, `operator`, or `viewer`.                        |
+| `groups`     | string[]       | IdP group memberships from Cloudflare Access. Empty for API key auth.        |
+| `authMethod` | string         | `"access"` for Cloudflare Access JWT, `"api-key"` for `X-Admin-Key`.         |
+| `logoutUrl`  | string \| null | URL to the logout page. `null` when Access is not configured.                |
+
+### `GET /logout`
+
+Logout page. Clears the `CF_Authorization` cookie, hits the Cloudflare Access logout endpoint to invalidate the session, and redirects back to `/dashboard/` where Access will prompt for re-authentication. No authentication required.
+
+When `CF_ACCESS_TEAM_NAME` is not configured (API key-only deployments), redirects directly to `/dashboard/`.
+
+**Response `200`:** HTML page that performs the logout flow automatically.
+
+**Response headers:**
+
+| Header          | Value                                                                  |
+| --------------- | ---------------------------------------------------------------------- |
+| `Cache-Control` | `no-store`                                                             |
+| `Set-Cookie`    | `CF_Authorization=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax` |
 
 ---
 
