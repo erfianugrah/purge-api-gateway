@@ -182,6 +182,7 @@ purgeRoute.post('/v1/zones/:zoneId/purge_cache', async (c) => {
 		if (env.ANALYTICS_DB) {
 			const event = buildPurgeEvent({
 				keyId,
+				keyName: authResult.keyName,
 				zoneId,
 				parsed,
 				result,
@@ -313,6 +314,7 @@ function extractResponseDetail(result: PurgeResult): string | null {
 /** Build a PurgeEvent for D1 analytics from the request lifecycle context. */
 function buildPurgeEvent(ctx: {
 	keyId: string;
+	keyName: string | undefined;
 	zoneId: string;
 	parsed: ParsedPurgeRequest;
 	result: PurgeResult;
@@ -331,7 +333,7 @@ function buildPurgeEvent(ctx: {
 		upstream_status: !ctx.collapseLevel && ctx.result.reachedUpstream ? ctx.result.status : null,
 		duration_ms: ctx.durationMs,
 		response_detail: extractResponseDetail(ctx.result),
-		created_by: AUDIT_CREATED_BY_API_KEY,
+		created_by: ctx.keyName ? `key:${ctx.keyName}` : AUDIT_CREATED_BY_API_KEY,
 		flight_id: ctx.flightId,
 		created_at: Date.now(),
 	};

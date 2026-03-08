@@ -52,10 +52,10 @@ Status legend: `[ ]` = open, `[x]` = done, `[-]` = won't fix / by design.
 - **File**: `src/routes/admin-keys.ts:113`, `src/routes/admin-s3.ts:77`
 - **Problem**: When auth is via `X-Admin-Key` (no Access JWT), the `created_by` field
   falls back to `raw.created_by` from the request body. A CLI user can claim any email.
-- **Verification**: Code trace — `identity?.email ?? (typeof raw.created_by === 'string' ? raw.created_by : undefined)`.
-- **Fix**: Document that `created_by` is unverified for non-SSO users. Optionally prefix
-  with `unverified:` when not from a JWT.
-- **Status**: `[x]` — added `resolveCreatedBy()` in `admin-helpers.ts`; non-SSO values prefixed `unverified:`
+- **Verification**: Code trace — `resolveCreatedBy()` in `admin-helpers.ts`.
+- **Fix**: SSO emails stored as-is; non-SSO values prefixed `unverified:`; fallback to `"via admin key"` when omitted.
+  Event audit trails use `key:<name>` / `credential:<name>` instead of generic `"via API key"`.
+- **Status**: `[x]` — added `resolveCreatedBy()` in `admin-helpers.ts`; `AuthResult.keyName` propagated to event builders
 
 ---
 

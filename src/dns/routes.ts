@@ -112,6 +112,7 @@ function extractResponseDetail(responseBody: string): string | null {
 /** Build a DnsEvent for analytics logging. */
 function buildDnsEvent(ctx: {
 	keyId: string;
+	keyName: string | undefined;
 	zoneId: string;
 	action: string;
 	recordName: string | null;
@@ -131,7 +132,7 @@ function buildDnsEvent(ctx: {
 		upstream_status: ctx.upstreamStatus,
 		duration_ms: ctx.durationMs,
 		response_detail: ctx.responseDetail,
-		created_by: AUDIT_CREATED_BY_API_KEY,
+		created_by: ctx.keyName ? `key:${ctx.keyName}` : AUDIT_CREATED_BY_API_KEY,
 		created_at: Date.now(),
 	};
 }
@@ -214,6 +215,7 @@ async function handleDnsRequest(
 	if (env.ANALYTICS_DB) {
 		const event = buildDnsEvent({
 			keyId,
+			keyName: authResult.keyName,
 			zoneId,
 			action,
 			recordName,
@@ -494,6 +496,7 @@ dnsRoute.post('/v1/zones/:zoneId/dns_records/import', async (c) => {
 		if (env.ANALYTICS_DB) {
 			const event = buildDnsEvent({
 				keyId,
+				keyName: authResult.keyName,
 				zoneId,
 				action: 'dns:import',
 				recordName: null,

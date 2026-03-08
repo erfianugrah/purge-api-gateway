@@ -226,18 +226,18 @@ Create an API key with an attached IAM policy document.
 
 **Request body:**
 
-| Field                      | Type           | Required | Description                                             |
-| -------------------------- | -------------- | -------- | ------------------------------------------------------- |
-| `name`                     | string         | yes      | Human-readable key name (min 1 char)                    |
-| `policy`                   | PolicyDocument | yes      | IAM policy (see below)                                  |
-| `zone_id`                  | string         | no       | Restrict key to a specific zone. Omit for any-zone key. |
-| `expires_in_days`          | number         | no       | Positive number of days until expiry                    |
-| `created_by`               | string         | no       | Audit trail identifier                                  |
-| `rate_limit`               | object         | no       | Per-key rate limit overrides                            |
-| `rate_limit.bulk_rate`     | number         | no       | Bulk token refill rate                                  |
-| `rate_limit.bulk_bucket`   | number         | no       | Bulk bucket capacity                                    |
-| `rate_limit.single_rate`   | number         | no       | Single-file token refill rate                           |
-| `rate_limit.single_bucket` | number         | no       | Single-file bucket capacity                             |
+| Field                      | Type           | Required | Description                                                                                                                                              |
+| -------------------------- | -------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                     | string         | yes      | Human-readable key name (min 1 char)                                                                                                                     |
+| `policy`                   | PolicyDocument | yes      | IAM policy (see below)                                                                                                                                   |
+| `zone_id`                  | string         | no       | Restrict key to a specific zone. Omit for any-zone key.                                                                                                  |
+| `expires_in_days`          | number         | no       | Positive number of days until expiry                                                                                                                     |
+| `created_by`               | string         | no       | Audit trail. Ignored if authenticated via SSO (email used instead). Non-SSO values are prefixed `unverified:`. Defaults to `"via admin key"` if omitted. |
+| `rate_limit`               | object         | no       | Per-key rate limit overrides                                                                                                                             |
+| `rate_limit.bulk_rate`     | number         | no       | Bulk token refill rate                                                                                                                                   |
+| `rate_limit.bulk_bucket`   | number         | no       | Bulk bucket capacity                                                                                                                                     |
+| `rate_limit.single_rate`   | number         | no       | Single-file token refill rate                                                                                                                            |
+| `rate_limit.single_bucket` | number         | no       | Single-file bucket capacity                                                                                                                              |
 
 **PolicyDocument:**
 
@@ -557,21 +557,21 @@ Query purge analytics events from D1.
 
 **PurgeEvent fields:**
 
-| Field             | Type            | Description                                                 |
-| ----------------- | --------------- | ----------------------------------------------------------- |
-| `key_id`          | string          | Key that made the request                                   |
-| `zone_id`         | string          | Target zone                                                 |
-| `purge_type`      | string          | `files`, `hosts`, `tags`, `prefixes`, or `purge_everything` |
-| `purge_target`    | string or null  | The specific target value                                   |
-| `tokens`          | number          | Rate limit tokens consumed                                  |
-| `status`          | number          | HTTP status returned to client                              |
-| `collapsed`       | string or false | Flight ID if collapsed, `false` otherwise                   |
-| `upstream_status` | number or null  | Status from Cloudflare API                                  |
-| `duration_ms`     | number          | Request duration                                            |
-| `created_at`      | number          | Unix ms timestamp                                           |
-| `response_detail` | string or null  | Truncated upstream response body                            |
-| `created_by`      | string or null  | Audit trail                                                 |
-| `flight_id`       | string          | Stable request collapsing ID                                |
+| Field             | Type            | Description                                                                  |
+| ----------------- | --------------- | ---------------------------------------------------------------------------- |
+| `key_id`          | string          | Key that made the request                                                    |
+| `zone_id`         | string          | Target zone                                                                  |
+| `purge_type`      | string          | `files`, `hosts`, `tags`, `prefixes`, or `purge_everything`                  |
+| `purge_target`    | string or null  | The specific target value                                                    |
+| `tokens`          | number          | Rate limit tokens consumed                                                   |
+| `status`          | number          | HTTP status returned to client                                               |
+| `collapsed`       | string or false | Flight ID if collapsed, `false` otherwise                                    |
+| `upstream_status` | number or null  | Status from Cloudflare API                                                   |
+| `duration_ms`     | number          | Request duration                                                             |
+| `created_at`      | number          | Unix ms timestamp                                                            |
+| `response_detail` | string or null  | Truncated upstream response body                                             |
+| `created_by`      | string or null  | Audit trail — `key:<name>` for API key auth, SSO email, or `"via admin key"` |
+| `flight_id`       | string          | Stable request collapsing ID                                                 |
 
 **Error codes:** 401 (unauthorized), 503 (analytics not configured / no D1 binding)
 
@@ -620,12 +620,12 @@ Create an S3-compatible credential with an IAM policy. Returns the `secret_acces
 
 **Request body:**
 
-| Field             | Type           | Required | Description                                                         |
-| ----------------- | -------------- | -------- | ------------------------------------------------------------------- |
-| `name`            | string         | yes      | Human-readable name (min 1 char)                                    |
-| `policy`          | PolicyDocument | yes      | IAM policy (same schema as key policies, with S3 actions/resources) |
-| `expires_in_days` | number         | no       | Positive number of days until expiry                                |
-| `created_by`      | string         | no       | Audit trail identifier                                              |
+| Field             | Type           | Required | Description                                                                                                    |
+| ----------------- | -------------- | -------- | -------------------------------------------------------------------------------------------------------------- |
+| `name`            | string         | yes      | Human-readable name (min 1 char)                                                                               |
+| `policy`          | PolicyDocument | yes      | IAM policy (same schema as key policies, with S3 actions/resources)                                            |
+| `expires_in_days` | number         | no       | Positive number of days until expiry                                                                           |
+| `created_by`      | string         | no       | Audit trail. SSO email takes precedence; non-SSO values prefixed `unverified:`. Defaults to `"via admin key"`. |
 
 **Example request:**
 
@@ -871,7 +871,7 @@ Query S3 proxy analytics events from D1.
 | `duration_ms`     | number         | Request duration                                   |
 | `created_at`      | number         | Unix ms timestamp                                  |
 | `response_detail` | string or null | Truncated response body                            |
-| `created_by`      | string or null | Audit trail                                        |
+| `created_by`      | string or null | Audit trail — `credential:<name>` for S3 auth      |
 
 **Error codes:** 401 (unauthorized), 503 (analytics not configured)
 
@@ -1036,7 +1036,7 @@ List recent DNS proxy events.
 			"upstream_status": 200,
 			"duration_ms": 142,
 			"response_detail": "...",
-			"created_by": "api-key",
+			"created_by": "key:my-deploy-bot",
 			"created_at": 1700000000000
 		}
 	]
@@ -1143,13 +1143,13 @@ Register an upstream Cloudflare API token.
 
 **Request body:**
 
-| Field        | Type     | Required | Description                                                                         |
-| ------------ | -------- | -------- | ----------------------------------------------------------------------------------- |
-| `name`       | string   | yes      | Human-readable name (min 1 char)                                                    |
-| `token`      | string   | yes      | Cloudflare API token (min 1 char)                                                   |
-| `zone_ids`   | string[] | yes      | Non-empty array. Use `["*"]` for wildcard (all zones), or specific 32-hex zone IDs. |
-| `created_by` | string   | no       | Audit trail identifier                                                              |
-| `validate`   | boolean  | no       | When `true`, validates the token against the Cloudflare API                         |
+| Field        | Type     | Required | Description                                                                                                    |
+| ------------ | -------- | -------- | -------------------------------------------------------------------------------------------------------------- |
+| `name`       | string   | yes      | Human-readable name (min 1 char)                                                                               |
+| `token`      | string   | yes      | Cloudflare API token (min 1 char)                                                                              |
+| `zone_ids`   | string[] | yes      | Non-empty array. Use `["*"]` for wildcard (all zones), or specific 32-hex zone IDs.                            |
+| `created_by` | string   | no       | Audit trail. SSO email takes precedence; non-SSO values prefixed `unverified:`. Defaults to `"via admin key"`. |
+| `validate`   | boolean  | no       | When `true`, validates the token against the Cloudflare API                                                    |
 
 **Example request:**
 
@@ -1302,15 +1302,15 @@ Register an upstream R2 endpoint.
 
 **Request body:**
 
-| Field               | Type     | Required | Description                                                      |
-| ------------------- | -------- | -------- | ---------------------------------------------------------------- |
-| `name`              | string   | yes      | Human-readable name (min 1 char)                                 |
-| `access_key_id`     | string   | yes      | R2 access key ID (min 1 char)                                    |
-| `secret_access_key` | string   | yes      | R2 secret access key (min 1 char)                                |
-| `endpoint`          | string   | yes      | R2 endpoint URL (must be HTTPS)                                  |
-| `bucket_names`      | string[] | yes      | Non-empty array. Use `["*"]` for all buckets, or specific names. |
-| `created_by`        | string   | no       | Audit trail identifier                                           |
-| `validate`          | boolean  | no       | When `true`, validates connectivity to the R2 endpoint           |
+| Field               | Type     | Required | Description                                                                                                    |
+| ------------------- | -------- | -------- | -------------------------------------------------------------------------------------------------------------- |
+| `name`              | string   | yes      | Human-readable name (min 1 char)                                                                               |
+| `access_key_id`     | string   | yes      | R2 access key ID (min 1 char)                                                                                  |
+| `secret_access_key` | string   | yes      | R2 secret access key (min 1 char)                                                                              |
+| `endpoint`          | string   | yes      | R2 endpoint URL (must be HTTPS)                                                                                |
+| `bucket_names`      | string[] | yes      | Non-empty array. Use `["*"]` for all buckets, or specific names.                                               |
+| `created_by`        | string   | no       | Audit trail. SSO email takes precedence; non-SSO values prefixed `unverified:`. Defaults to `"via admin key"`. |
+| `validate`          | boolean  | no       | When `true`, validates connectivity to the R2 endpoint                                                         |
 
 **Example request:**
 

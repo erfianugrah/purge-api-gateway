@@ -301,7 +301,16 @@ s3App.all('/*', async (c) => {
 
 		// Fire-and-forget analytics write
 		if (c.env.ANALYTICS_DB) {
-			const event = buildS3Event(accessKeyId, op.name, op.bucket, op.key, r2Response.status, Date.now() - start, responseDetail);
+			const event = buildS3Event(
+				accessKeyId,
+				authResult.keyName,
+				op.name,
+				op.bucket,
+				op.key,
+				r2Response.status,
+				Date.now() - start,
+				responseDetail,
+			);
 			c.executionCtx.waitUntil(logS3Event(c.env.ANALYTICS_DB, event));
 		}
 
@@ -328,7 +337,7 @@ s3App.all('/*', async (c) => {
 
 		// Log failed upstream requests too
 		if (c.env.ANALYTICS_DB) {
-			const event = buildS3Event(accessKeyId, op.name, op.bucket, op.key, 502, Date.now() - start, e.message ?? null);
+			const event = buildS3Event(accessKeyId, authResult.keyName, op.name, op.bucket, op.key, 502, Date.now() - start, e.message ?? null);
 			c.executionCtx.waitUntil(logS3Event(c.env.ANALYTICS_DB, event));
 		}
 
@@ -341,6 +350,7 @@ s3App.all('/*', async (c) => {
 /** Build an S3Event for D1 analytics. */
 function buildS3Event(
 	credentialId: string,
+	credentialName: string | undefined,
 	operation: string,
 	bucket: string | undefined,
 	key: string | undefined,
@@ -356,7 +366,7 @@ function buildS3Event(
 		status,
 		duration_ms: durationMs,
 		response_detail: responseDetail,
-		created_by: AUDIT_CREATED_BY_API_KEY,
+		created_by: credentialName ? `credential:${credentialName}` : AUDIT_CREATED_BY_API_KEY,
 		created_at: Date.now(),
 	};
 }

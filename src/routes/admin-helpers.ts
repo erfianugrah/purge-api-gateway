@@ -13,11 +13,12 @@ const UNVERIFIED_PREFIX = 'unverified:';
  * Resolve created_by from SSO identity or request body.
  * SSO-verified emails are stored as-is; self-reported values from the request body
  * are prefixed with "unverified:" so audit trails distinguish trust levels.
+ * Falls back to "via admin key" when no identity or explicit value is provided.
  */
-export function resolveCreatedBy(identity: AccessIdentity | undefined, rawCreatedBy: unknown): string | undefined {
+export function resolveCreatedBy(identity: AccessIdentity | undefined, rawCreatedBy: unknown): string {
 	if (identity?.email) return identity.email;
 	if (typeof rawCreatedBy === 'string' && rawCreatedBy.length > 0) return `${UNVERIFIED_PREFIX}${rawCreatedBy}`;
-	return undefined;
+	return 'via admin key';
 }
 
 // ─── Upstream credential validation ─────────────────────────────────────────

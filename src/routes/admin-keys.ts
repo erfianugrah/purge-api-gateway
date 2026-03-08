@@ -17,7 +17,7 @@ import type { CreateKeyRequest, HonoEnv } from '../types';
 import type { GatewayConfig } from '../config-registry';
 import type { PolicyDocument } from '../policy-types';
 
-// ─── Admin: Purge Key Management ────────────────────────────────────────────
+// ─── Admin: API Key Management ──────────────────────────────────────────────
 
 export const adminKeysApp = new Hono<HonoEnv>();
 

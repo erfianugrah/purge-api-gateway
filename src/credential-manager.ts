@@ -22,6 +22,8 @@ import type { AuthResult, BulkItemResult, BulkResult, BulkInspectItem, BulkDryRu
 
 /** Minimum fields every managed credential must have. */
 export interface BaseCredential {
+	/** Human-readable credential name (for audit trails). */
+	name: string;
 	/** Revoked flag (0 = active, 1 = revoked). */
 	revoked: number;
 	/** Epoch ms when the credential expires, or null for no expiry. */
@@ -160,7 +162,7 @@ export abstract class CredentialManager<T extends BaseCredential, TCached extend
 		}
 
 		console.log(JSON.stringify({ breadcrumb: 'credential-authorize-ok', id, actions: contexts.map((c) => c.action) }));
-		return { authorized: true };
+		return { authorized: true, keyName: entity.name };
 	}
 
 	/** Human-readable error when credential is not found. */

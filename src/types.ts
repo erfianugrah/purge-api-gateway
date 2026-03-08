@@ -111,6 +111,8 @@ export interface AuthResult {
 	error?: string;
 	/** Which items were denied, if any */
 	denied?: string[];
+	/** Human-readable key name, populated on successful auth for audit trails. */
+	keyName?: string;
 }
 
 // ─── Cached key for hot path ────────────────────────────────────────────────

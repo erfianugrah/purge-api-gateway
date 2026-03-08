@@ -188,7 +188,7 @@ export class IamManager extends CredentialManager<ApiKey, CachedKey> {
 		}
 
 		console.log(JSON.stringify({ breadcrumb: 'iam-authorize-ok', keyId, zoneId, actions: contexts.map((c) => c.action) }));
-		return { authorized: true };
+		return { authorized: true, keyName: key.name };
 	}
 
 	/**

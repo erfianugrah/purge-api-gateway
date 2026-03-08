@@ -467,7 +467,7 @@ curl -X POST "$GATEKEEPER_URL/admin/upstream-r2/bulk-delete" \
 
 ## 3. Creating API Keys
 
-Every key requires `name` and `policy`. The policy version must be `"2025-01-01"`. Optional fields: `zone_id` (scope to one zone), `expires_in_days`, `rate_limit` (per-key overrides), `created_by`. The same key type serves both purge and DNS operations -- actions in the policy determine what the key can do.
+Every key requires `name` and `policy`. The policy version must be `"2025-01-01"`. Optional fields: `zone_id` (scope to one zone), `expires_in_days`, `rate_limit` (per-key overrides), `created_by` (audit trail -- SSO email is used automatically when authenticated via Cloudflare Access; non-SSO values are prefixed `unverified:`; defaults to `"via admin key"` if omitted). The same key type serves both purge and DNS operations -- actions in the policy determine what the key can do.
 
 The response includes the key ID (`gw_<hex>`) which is the Bearer token. It is shown once -- save it.
 
@@ -939,7 +939,7 @@ gk keys create \
 
 ## 4. Creating S3 Credentials
 
-Every credential requires `name` and `policy`. Optional fields: `expires_in_days`, `created_by`. The response includes both `access_key_id` (GK prefix, 20 chars) and `secret_access_key` (64 hex chars) -- the secret is shown once only.
+Every credential requires `name` and `policy`. Optional fields: `expires_in_days`, `created_by` (same resolution as API keys -- SSO email, `unverified:` prefix, or `"via admin key"` fallback). The response includes both `access_key_id` (GK prefix, 20 chars) and `secret_access_key` (64 hex chars) -- the secret is shown once only.
 
 S3 credentials are not zone-scoped. They are account-level.
 
