@@ -7,7 +7,7 @@ Complete guide covering every operation, every permutation. All examples show bo
 - `$ADMIN_KEY` -- your admin secret for `/admin/*` routes.
 - `$GATEKEEPER_URL` -- your gateway URL, e.g. `https://gate.example.com`.
 - `$ZONE_ID` -- a Cloudflare zone ID (32-char hex).
-- `$KEY_ID` -- a purge API key ID (`gw_...`).
+- `$KEY_ID` -- an API key ID (`gw_...`).
 - `$ACCESS_KEY_ID` -- an S3 credential access key ID (`GK...`).
 - Policy JSON is shown inline for `curl` and via `@file.json` for the CLI where practical.
 
@@ -20,6 +20,7 @@ Complete guide covering every operation, every permutation. All examples show bo
 - Node.js >= 18
 - A Cloudflare account
 - A Cloudflare API token with **Cache Purge** permission (for purge functionality)
+- A Cloudflare API token with **DNS:Edit** permission (for DNS proxy functionality)
 - An R2 API token with appropriate bucket access (for S3 proxy functionality)
 
 ### Install
@@ -107,9 +108,9 @@ Set these in your shell profile or `.env` to avoid passing flags on every comman
 
 Upstream credentials are stored in the Durable Object at runtime -- they are not env vars. This lets you manage multiple upstream tokens, rotate credentials without redeploying, and audit who registered what. Token/secret values are write-only and cannot be retrieved after registration.
 
-### 2.1 Cloudflare API Tokens (for purge)
+### 2.1 Cloudflare API Tokens (for purge + DNS)
 
-When a purge request arrives, the gateway resolves the best matching upstream token for the target zone: exact match preferred over wildcard.
+When a purge or DNS request arrives, the gateway resolves the best matching upstream token for the target zone: exact match preferred over wildcard.
 
 #### Single-zone token
 
@@ -464,15 +465,15 @@ curl -X POST "$GATEKEEPER_URL/admin/upstream-r2/bulk-delete" \
 
 ---
 
-## 3. Creating Purge API Keys
+## 3. Creating API Keys
 
-Every key requires `name` and `policy`. The policy version must be `"2025-01-01"`. Optional fields: `zone_id` (scope to one zone), `expires_in_days`, `rate_limit` (per-key overrides), `created_by`.
+Every key requires `name` and `policy`. The policy version must be `"2025-01-01"`. Optional fields: `zone_id` (scope to one zone), `expires_in_days`, `rate_limit` (per-key overrides), `created_by`. The same key type serves both purge and DNS operations -- actions in the policy determine what the key can do.
 
 The response includes the key ID (`gw_<hex>`) which is the Bearer token. It is shown once -- save it.
 
 ### 3.1 Minimal key -- wildcard policy
 
-Full access to all purge actions on all zones.
+Full access to all purge actions on all zones. For DNS, use `dns:*` instead of `purge:*`.
 
 **CLI:**
 
@@ -2225,6 +2226,10 @@ The current and only supported policy version is `"2025-01-01"`.
 
 `purge:url`, `purge:host`, `purge:tag`, `purge:prefix`, `purge:everything`, `purge:*`
 
+### DNS actions
+
+`dns:create`, `dns:read`, `dns:update`, `dns:delete`, `dns:batch`, `dns:export`, `dns:import`, `dns:*`
+
 ### S3 actions
 
 `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, `s3:ListBucket`, `s3:ListAllMyBuckets`, `s3:CreateBucket`, `s3:DeleteBucket`, `s3:AbortMultipartUpload`, `s3:ListMultipartUploadParts`, `s3:*`
@@ -2280,7 +2285,11 @@ The current and only supported policy version is `"2025-01-01"`.
 
 `bucket`, `key`, `key.prefix`, `key.filename`, `key.extension`, `method`, `content_type`, `content_length`, `source_bucket`, `source_key`, `list_prefix`
 
-### Condition fields -- request-level (both services)
+### Condition fields -- DNS
+
+`dns.name`, `dns.type`, `dns.content`, `dns.proxied`, `dns.ttl`, `dns.priority`, `dns.comment`
+
+### Condition fields -- request-level (all services)
 
 `client_ip`, `client_country`, `client_asn`, `time.hour`, `time.day_of_week`, `time.iso`
 
@@ -2299,7 +2308,7 @@ Always run with `dry_run: true` first (CLI: omit `--confirm`; API: set `"dry_run
 
 | Prefix  | Resource type         |
 | ------- | --------------------- |
-| `gw_`   | Purge API key         |
+| `gw_`   | API key               |
 | `GK`    | S3 credential         |
 | `upt_`  | Upstream CF API token |
 | `upr2_` | Upstream R2 endpoint  |

@@ -1,6 +1,6 @@
 # Contributing to Gatekeeper
 
-This guide covers development setup, code conventions, testing, and the workflow for adding new features to Gatekeeper -- an API gateway and S3 proxy built on Cloudflare Workers with Durable Objects, D1, and R2.
+This guide covers development setup, code conventions, testing, and the workflow for adding new features to Gatekeeper -- an API gateway, DNS proxy, and S3 proxy built on Cloudflare Workers with Durable Objects, D1, and R2.
 
 ---
 
@@ -209,7 +209,7 @@ Additional conventions:
 - **Section dividers** in source files use Unicode box-drawing characters:
 
   ```typescript
-  // ─── Admin: Purge Key Management ────────────────────────────────────────────
+  // ─── Admin: API Key Management ──────────────────────────────────────────────
   ```
 
 - **JSDoc** `/** ... */` for exported functions/methods. No `@param`/`@returns` tags -- rely on TypeScript types.

@@ -222,7 +222,7 @@ All key management endpoints require admin auth (`X-Admin-Key` or Cloudflare Acc
 
 ### `POST /admin/keys`
 
-Create a purge API key with an attached IAM policy document.
+Create an API key with an attached IAM policy document.
 
 **Request body:**
 
@@ -321,7 +321,7 @@ The `id` field (prefixed `gw_`) is the Bearer token. Show it once to the user --
 
 ### `GET /admin/keys`
 
-List purge API keys.
+List API keys.
 
 **Query parameters:**
 
@@ -1135,7 +1135,7 @@ All other R2 responses (404, 409, etc.) are passed through unchanged.
 
 ## 10. Upstream Tokens
 
-Manage upstream Cloudflare API tokens used for proxying cache purge requests. Admin auth required.
+Manage upstream Cloudflare API tokens used for proxying cache purge and DNS requests. Admin auth required.
 
 ### `POST /admin/upstream-tokens`
 
@@ -1180,7 +1180,7 @@ Register an upstream Cloudflare API token.
 
 The actual token value is never returned after creation -- only `token_preview` (first 4 + last 4 chars). The `warnings` array is present when `validate: true` is used and issues are detected.
 
-When a purge request arrives, the gateway looks up the best matching upstream token: exact zone match first, then wildcard. If no upstream token matches, the request fails with 502.
+When a purge or DNS request arrives, the gateway looks up the best matching upstream token: exact zone match first, then wildcard. If no upstream token matches, the request fails with 502.
 
 **Error codes:** 400 (validation), 401 (unauthorized)
 

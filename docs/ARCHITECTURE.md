@@ -92,11 +92,11 @@ flowchart TB
 
 Three client types hit the gateway:
 
-1. **Services / CI/CD** -- authenticate with a `Bearer gw_...` API key. Used for programmatic cache purge.
+1. **Services / CI/CD** -- authenticate with a `Bearer gw_...` API key. Used for programmatic cache purge and DNS record management.
 2. **Browsers** -- authenticate via Cloudflare Access (`CF_Authorization` cookie). Used for the dashboard and admin API.
 3. **S3 clients** (rclone, boto3, AWS CLI) -- authenticate with AWS Signature V4 using Gatekeeper-issued credentials. Used for the S3-compatible proxy to R2.
 
-The Worker routes requests through security-header middleware, then into the authentication layer (Access JWT, admin key HMAC, or Sig V4 verification), then through the IAM policy engine, and finally to the appropriate service handler. Handlers communicate with the Durable Object for state (keys, credentials, rate limits, config) and with D1 for analytics logging. Upstream calls go to `api.cloudflare.com` (purge) or R2's S3-compatible API (storage).
+The Worker routes requests through security-header middleware, then into the authentication layer (Access JWT, admin key HMAC, or Sig V4 verification), then through the IAM policy engine, and finally to the appropriate service handler. Handlers communicate with the Durable Object for state (keys, credentials, rate limits, config) and with D1 for analytics logging. Upstream calls go to `api.cloudflare.com` (purge + DNS) or R2's S3-compatible API (storage).
 
 Static assets for the dashboard SPA are served via Workers Static Assets with SPA fallback. API routes (`/v1/*`, `/admin/*`, `/health`, `/s3/*`) are handled by the Worker via `run_worker_first`. DNS proxy routes live under `/v1/zones/:zoneId/dns_records/*` alongside the purge endpoint.
 
@@ -108,14 +108,14 @@ Static assets for the dashboard SPA are served via Workers Static Assets with SP
 
 Cloudflare Access handles **identity** (who are you?) via JWT validation. The IAM engine handles **authorization** (what can you do?) via policy documents attached to API keys or S3 credentials. These are deliberately decoupled:
 
-- Machine clients authenticate via API key (purge) or AWS Sig V4 (S3) and skip Access entirely.
+- Machine clients authenticate via API key (purge + DNS) or AWS Sig V4 (S3) and skip Access entirely.
 - Human users authenticate via Access. When RBAC is configured, their role (admin/operator/viewer) is derived from IdP group memberships fetched via the Cloudflare Access get-identity endpoint. When RBAC is not configured, all authenticated users receive the admin role (backward compatible).
 - The `/admin/me` endpoint returns the current user's email, role, groups, auth method, and logout URL.
 - This separation means the gateway does not depend on Access for machine-to-machine traffic -- only for the dashboard and admin routes.
 
 ### Single Durable Object as Aggregate Root
 
-One DO instance (`Gatekeeper`) holds all mutable state for the entire gateway: purge API keys, S3 credentials, upstream CF API tokens, upstream R2 endpoints, rate-limit buckets, config registry, and request collapsing. This is a deliberate simplification.
+One DO instance (`Gatekeeper`) holds all mutable state for the entire gateway: API keys, S3 credentials, upstream CF API tokens, upstream R2 endpoints, rate-limit buckets, config registry, and request collapsing. This is a deliberate simplification.
 
 The Durable Object soft limit is approximately 1,000 RPS. This is well above the Cloudflare Enterprise purge ceiling, so a single DO is not a bottleneck. All state lives in DO SQLite, which is platform-encrypted at rest. Credential lookups use a 60-second in-memory cache to avoid repeated SQLite reads on the hot auth path.
 
@@ -141,7 +141,7 @@ The system is divided into ten bounded contexts, each with a clear responsibilit
 
 **Files:** `src/iam.ts`, `src/policy-engine.ts`, `src/policy-types.ts`, `src/routes/admin-keys.ts`
 
-Manages purge API keys with policy documents modeled after AWS IAM. Each key has a policy with statements containing effects (allow/deny), actions (`purge:url`, `purge:host`, `purge:tag`, `purge:prefix`, `purge:everything`), resources (`zone:<id>`, `zone:*`, `*`), and optional conditions. Evaluation follows standard IAM precedence: explicit deny wins, then explicit allow, then implicit deny.
+Manages API keys with policy documents modeled after AWS IAM. Each key has a policy with statements containing effects (allow/deny), actions (purge: `purge:url`, `purge:host`, `purge:tag`, `purge:prefix`, `purge:everything`; DNS: `dns:create`, `dns:read`, `dns:update`, `dns:delete`, `dns:batch`, `dns:export`, `dns:import`), resources (`zone:<id>`, `zone:*`, `*`), and optional conditions. Evaluation follows standard IAM precedence: explicit deny wins, then explicit allow, then implicit deny.
 
 CRUD operations: create, list, get, revoke, delete, bulk revoke, bulk delete.
 
@@ -187,7 +187,7 @@ Logs S3 proxy events to D1. Each event records the operation, bucket, object key
 
 **Files:** `src/upstream-tokens.ts`, `src/routes/admin-upstream-tokens.ts`
 
-Registry of upstream Cloudflare API tokens. Each token has a name, the token value (write-only), and a zone scope (list of zone IDs or `*` for all zones). When a purge request arrives, the gateway resolves the best matching token: exact zone match preferred over wildcard.
+Registry of upstream Cloudflare API tokens. Each token has a name, the token value (write-only), and a zone scope (list of zone IDs or `*` for all zones). When a purge or DNS request arrives, the gateway resolves the best matching token: exact zone match preferred over wildcard.
 
 CRUD operations: create, list, get, delete, bulk delete.
 
@@ -367,16 +367,16 @@ Chart color slots: `#c574dd`, `#5adecd`, `#f37e96`, `#f1a171`, `#8796f4`.
 
 ### Pages
 
-| Route                        | Content                                                                                  |
-| ---------------------------- | ---------------------------------------------------------------------------------------- |
-| `/dashboard`                 | Summary stats, traffic timeline (area chart), purge type donut, top zones, recent events |
-| `/dashboard/keys`            | Purge key CRUD with filter tabs, search, sortable columns, pagination, policy builder    |
-| `/dashboard/s3-credentials`  | S3 credential CRUD with policy preview (ALLOW/DENY badges), AWS IAM import               |
-| `/dashboard/upstream-tokens` | Upstream CF API token registry                                                           |
-| `/dashboard/upstream-r2`     | Upstream R2 endpoint registry                                                            |
-| `/dashboard/analytics`       | Unified event log (purge + S3) with filters, expandable detail rows, JSON export         |
-| `/dashboard/purge`           | Manual purge form with live rate-limit status                                            |
-| `/dashboard/settings`        | Config registry editor with inline edit, reset-to-default                                |
+| Route                        | Content                                                                                         |
+| ---------------------------- | ----------------------------------------------------------------------------------------------- |
+| `/dashboard`                 | Summary stats, traffic timeline (area chart), purge type donut, top zones, recent events        |
+| `/dashboard/keys`            | API key CRUD with filter tabs, search, sortable columns, expandable detail rows, policy builder |
+| `/dashboard/s3-credentials`  | S3 credential CRUD with policy preview (ALLOW/DENY badges), AWS IAM import                      |
+| `/dashboard/upstream-tokens` | Upstream CF API token registry                                                                  |
+| `/dashboard/upstream-r2`     | Upstream R2 endpoint registry                                                                   |
+| `/dashboard/analytics`       | Unified event log (purge + DNS + S3) with filters, expandable detail rows, JSON export          |
+| `/dashboard/purge`           | Manual purge form with live rate-limit status                                                   |
+| `/dashboard/settings`        | Config registry editor with inline edit, reset-to-default                                       |
 
 ### Component Inventory
 
@@ -384,10 +384,10 @@ Chart color slots: `#c574dd`, `#5adecd`, `#f37e96`, `#f1a171`, `#8796f4`.
 | ------------------- | ------------------------------------------------------------- |
 | `DashboardLayout`   | Astro layout: sidebar, header, content slot                   |
 | `OverviewDashboard` | Stat cards (count-up), traffic chart, purge type donut        |
-| `KeysPage`          | Purge key CRUD with policy builder                            |
+| `KeysPage`          | API key CRUD with expandable detail rows and policy builder   |
 | `S3CredentialsPage` | S3 credential CRUD with S3 policy builder                     |
 | `AnalyticsPage`     | Unified event log with expandable details                     |
-| `PolicyBuilder`     | Visual purge policy editor with condition tree                |
+| `PolicyBuilder`     | Visual purge + DNS policy editor with condition tree          |
 | `S3PolicyBuilder`   | Visual S3 policy editor (19 action toggles, AWS IAM import)   |
 | `ConditionEditor`   | Recursive condition tree: leaf/AND/OR/NOT groups, pill inputs |
 | `TablePagination`   | Shared pagination bar with page size selector                 |
@@ -441,7 +441,7 @@ Breadcrumbs are organized by subsystem:
 | Module             | Breadcrumb Prefix               | Decision Points                                                             |
 | ------------------ | ------------------------------- | --------------------------------------------------------------------------- |
 | Durable Object     | `do-*`                          | Init, bucket rebuild, per-key/account rate limiting, upstream fetch, 429    |
-| IAM (purge keys)   | `iam-*`                         | Not found, revoked, expired, zone mismatch, policy denied, authorized       |
+| IAM (API keys)     | `iam-*`                         | Not found, revoked, expired, zone mismatch, policy denied, authorized       |
 | Credential Manager | `credential-*`                  | Not found, revoked, expired, policy denied, authorized, cache miss, corrupt |
 | Auth (CF Access)   | `access-*`                      | JWT source, validation, groups extraction, RBAC role resolution             |
 | Auth (admin)       | `auth-admin-*`                  | Method selection, RBAC enforcement, role check                              |
@@ -459,7 +459,7 @@ Pure crypto modules (`sig-v4-verify.ts`, `sig-v4-sign.ts`) do not emit breadcrum
 
 ### D1 Analytics
 
-Purge and S3 events are persisted to a D1 database (`gatekeeper-analytics`) for queryable history. The admin API exposes event listing (with filters for status, type, zone, time range) and summary aggregation (counts, status breakdowns, average latency).
+Purge, DNS, and S3 events are persisted to a D1 database (`gatekeeper-analytics`) for queryable history. The admin API exposes event listing (with filters for status, type, zone, time range) and summary aggregation (counts, status breakdowns, average latency).
 
 A daily cron trigger at 03:00 UTC deletes events older than the configured `retention_days` (default 30).
 
@@ -487,6 +487,7 @@ src/
     admin-upstream-tokens.ts         Upstream CF API token CRUD
     admin-upstream-r2.ts             Upstream R2 endpoint CRUD
     admin-analytics.ts               Purge analytics queries
+    admin-dns-analytics.ts           DNS analytics queries
     admin-s3.ts                      S3 credential CRUD + S3 analytics queries
   types.ts                           Shared types (HonoEnv, RateLimitConfig, ApiKey, etc.)
   policy-types.ts                    PolicyDocument, Statement, Condition, RequestContext
@@ -496,7 +497,11 @@ src/
   auth-admin.ts                      Admin auth middleware: Access JWT or X-Admin-Key, RBAC
   iam.ts                             IamManager: createKey, authorize, authorizeFromBody
   token-bucket.ts                    Token bucket (lazy refill, no I/O)
-  analytics.ts                       D1 analytics for purge (events, summary, retention)
+    analytics.ts                       D1 analytics for purge (events, summary, retention)
+  dns/
+    routes.ts                        DNS proxy Hono sub-app: 9 endpoints, IAM enforcement
+    operations.ts                    DNS operation classification + condition field extraction
+    analytics.ts                     D1 analytics for DNS (logDnsEvent, queryDnsEvents, queryDnsSummary)
   crypto.ts                          queryAll helper, HMAC utils
   do-stub.ts                         getStub() -- named DO ID helper
   env.d.ts                           Env type extensions (ADMIN_KEY, CF_ACCESS_*)
@@ -512,9 +517,9 @@ src/
     xml.ts                           S3 XML error responses, DeleteObjects XML parsing
     analytics.ts                     D1 analytics for S3 (logS3Event, queryS3Events, queryS3Summary)
 cli/
-  index.ts                           Entry point (citty, 9 subcommands)
+  index.ts                           Entry point (citty, 10 subcommands)
   smoke-test.ts                      E2E smoke test orchestrator
-  smoke/                             Modularized smoke test modules (9 files)
+  smoke/                             Modularized smoke test modules (10 files, incl. dns.ts)
   client.ts                          HTTP client
   ui.ts                              Colors, spinners, tables
   commands/
@@ -524,10 +529,11 @@ cli/
     analytics.ts                     gk analytics {events,summary}
     s3-credentials.ts                gk s3-credentials {create,list,get,revoke,bulk-revoke,bulk-delete}
     s3-analytics.ts                  gk s3-analytics {events,summary}
+    dns-analytics.ts                 gk dns-analytics {events,summary}
     upstream-tokens.ts               gk upstream-tokens {create,list,get,delete,bulk-delete}
     upstream-r2.ts                   gk upstream-r2 {create,list,get,delete,bulk-delete}
     config.ts                        gk config {get,set,reset}
-test/                                31 test files (664 tests, with 1 CLI test in cli/)
+test/                                32 test files (691 tests, with 1 CLI test in cli/)
   helpers.ts                         Test factories, upstream token registration, mock helpers
   s3-helpers.ts                      R2 upstream registration, test constants
   policy-helpers.ts                  Shared policy test helpers
@@ -542,7 +548,7 @@ dashboard/
     lib/typography.ts                Shared typography constants
     components/
       OverviewDashboard.tsx          Stats, charts, recent events
-      KeysPage.tsx                   Purge key CRUD + policy builder
+      KeysPage.tsx                   API key CRUD + expandable detail rows + policy builder
       S3CredentialsPage.tsx          S3 credential CRUD + S3 policy builder
       UpstreamTokensPage.tsx         Upstream CF API token management
       UpstreamR2Page.tsx             Upstream R2 endpoint management
@@ -550,7 +556,7 @@ dashboard/
       AnalyticsPage.tsx              Event log + summary
       PurgePage.tsx                  Manual purge form
       ConditionEditor.tsx            Shared condition tree
-      PolicyBuilder.tsx              Visual purge policy editor
+      PolicyBuilder.tsx              Visual purge + DNS policy editor
       S3PolicyBuilder.tsx            Visual S3 policy editor
       TablePagination.tsx            Shared pagination bar
       ui/                            shadcn/ui primitives
@@ -615,7 +621,7 @@ From `wrangler.jsonc`:
 | Binding                | Type              | Purpose                                        |
 | ---------------------- | ----------------- | ---------------------------------------------- |
 | `GATEKEEPER`           | Durable Object    | Single DO instance for all gateway state       |
-| `ANALYTICS_DB`         | D1 Database       | Purge and S3 analytics event storage           |
+| `ANALYTICS_DB`         | D1 Database       | Purge, DNS, and S3 analytics event storage     |
 | `ASSETS`               | Static Assets     | Dashboard SPA files                            |
 | `ADMIN_KEY`            | Secret            | Admin API authentication                       |
 | `CF_ACCESS_TEAM_NAME`  | Secret (optional) | Cloudflare Access team name for JWT validation |

@@ -29,7 +29,7 @@ See [Deployment](docs/DEPLOYMENT.md) for production setup.
 | Document                             | Description                                                          |
 | ------------------------------------ | -------------------------------------------------------------------- |
 | [Guide](docs/GUIDE.md)               | Getting started, creating keys/credentials, every policy permutation |
-| [API Reference](docs/API.md)         | All 32 endpoints with request/response examples                      |
+| [API Reference](docs/API.md)         | All 47 endpoints with request/response examples                      |
 | [CLI Reference](docs/CLI.md)         | Every command, flag, and usage example                               |
 | [Security](docs/SECURITY.md)         | IAM policy engine, auth tiers, conditions, 11 policy examples        |
 | [Architecture](docs/ARCHITECTURE.md) | System design, Durable Object, rate limiting, dashboard              |

@@ -1,7 +1,7 @@
 # Gatekeeper CLI Reference
 
-The `gk` CLI manages the Gatekeeper API gateway. It covers API keys, cache purge,
-analytics, S3 credentials, upstream tokens, upstream R2 endpoints, and runtime configuration.
+The `gk` CLI manages the Gatekeeper API gateway. It covers API keys, cache purge, DNS analytics,
+purge analytics, S3 credentials, upstream tokens, upstream R2 endpoints, and runtime configuration.
 
 ## Installation
 
@@ -488,12 +488,12 @@ gk s3-analytics summary --since 2025-01-01T00:00:00Z
 
 ## upstream-tokens
 
-Manage upstream Cloudflare API tokens for purge. Requires `--admin-key`. Not
+Manage upstream Cloudflare API tokens for purge and DNS. Requires `--admin-key`. Not
 zone-scoped.
 
 ### upstream-tokens create
 
-Register a Cloudflare API token for upstream purge requests.
+Register a Cloudflare API token for upstream purge and DNS requests.
 
 ```
 gk upstream-tokens create --name <name> --zone-ids <ids> [--token <token>] [flags]
