@@ -466,6 +466,7 @@ from `zone:<id>` to also support `account:<id>`. Not blocking, but adds scope to
 - Batch operations decompose into individual contexts per sub-operation, all authorized before forwarding.
 - DNS shares the bulk rate-limit bucket (1 token per request).
 - Retention cron deletes old `dns_events` rows alongside purge and S3 events.
+- DNS may require a separate CF API token with `DNS:Edit` permission (the purge token only has `Cache Purge`). The smoke tests register a dedicated `DNS_TEST_TOKEN` as an additional upstream token and clean it up after. The `resolveTokenForZone` resolver picks the newest exact match, so the DNS token takes priority while registered.
 
 ---
 

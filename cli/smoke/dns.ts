@@ -3,7 +3,22 @@
  */
 
 import type { SmokeContext } from './helpers.js';
-import { req, admin, section, createKey, assertStatus, assertJson, assertTruthy, state, sleep, green, red } from './helpers.js';
+import {
+	req,
+	admin,
+	section,
+	createKey,
+	assertStatus,
+	assertJson,
+	assertTruthy,
+	state,
+	sleep,
+	green,
+	red,
+	yellow,
+	DNS_TEST_TOKEN,
+	SKIP_DNS,
+} from './helpers.js';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -14,8 +29,31 @@ function dns(keyId: string, method: string, path: string, body?: unknown): Promi
 }
 
 export async function run(ctx: SmokeContext): Promise<void> {
+	if (SKIP_DNS) {
+		section('DNS Proxy Tests (skipped — no DNS_TEST_TOKEN)');
+		console.log(`  ${yellow('SKIP')}  Set DNS_TEST_TOKEN in .env`);
+		return;
+	}
+
 	const { ZONE } = ctx;
 	const DNS_BASE = `/v1/zones/${ZONE}/dns_records`;
+
+	// ─── DNS Upstream Token Setup ───────────────────────────────────
+	// DNS requires a CF API token with DNS:Edit permission, which may differ
+	// from the purge token. Register a separate upstream token for DNS tests.
+	// The resolver picks the newest exact match, so this overrides the purge token
+	// for this zone. We clean it up at the end so purge resolution is restored.
+
+	section('DNS Upstream Token Setup');
+
+	const dnsUpstream = await admin('POST', '/admin/upstream-tokens', {
+		name: 'smoke-dns-token',
+		token: DNS_TEST_TOKEN,
+		zone_ids: [ZONE],
+	});
+	const dnsUpstreamId = dnsUpstream.body?.result?.id;
+	assertStatus('register DNS upstream token -> 200', dnsUpstream, 200);
+	assertTruthy('DNS upstream token has id', dnsUpstreamId);
 
 	// ─── DNS Key Setup ──────────────────────────────────────────────
 
@@ -332,4 +370,17 @@ export async function run(ctx: SmokeContext): Promise<void> {
 
 	const summaryNoZone = await admin('GET', '/admin/dns/analytics/summary');
 	assertStatus('DNS summary without zone_id -> 200', summaryNoZone, 200);
+
+	// ─── DNS Upstream Token Cleanup ─────────────────────────────────
+	// Remove the DNS upstream token so the purge token is restored as the
+	// resolver's match for this zone.
+
+	if (dnsUpstreamId) {
+		try {
+			await admin('DELETE', `/admin/upstream-tokens/${dnsUpstreamId}`);
+			console.log(`  Cleaned up DNS upstream token ${dnsUpstreamId}`);
+		} catch {
+			/* best effort */
+		}
+	}
 }

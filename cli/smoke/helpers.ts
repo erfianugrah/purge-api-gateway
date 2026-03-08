@@ -50,6 +50,9 @@ export const R2_ENDPOINT = process.env['R2_ENDPOINT'] ?? readVar('.env', 'R2_TES
 export const S3_TEST_BUCKET = process.env['S3_TEST_BUCKET'] ?? 'vault';
 export const SKIP_S3 = !R2_ACCESS_KEY || !R2_SECRET_KEY || !R2_ENDPOINT;
 
+export const DNS_TEST_TOKEN = process.env['DNS_TEST_TOKEN'] ?? readVar('.env', 'DNS_TEST_TOKEN');
+export const SKIP_DNS = !DNS_TEST_TOKEN;
+
 // ─── Mutable test state ────────────────────────────────────────────────────
 
 export const state = {
