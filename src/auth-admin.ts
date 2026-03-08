@@ -47,10 +47,11 @@ export function resolveRole(groups: string[], env: Env): AdminRole | null {
 	// If no RBAC env vars are set, all authenticated users get admin (backward compatible)
 	if (!rbacEnabled) return 'admin';
 
-	// Resolve highest matching role
-	if (groups.some((g) => adminGroups.includes(g))) return 'admin';
-	if (groups.some((g) => operatorGroups.includes(g))) return 'operator';
-	if (groups.some((g) => viewerGroups.includes(g))) return 'viewer';
+	// Resolve highest matching role (case-insensitive to handle IdP casing differences)
+	const lowerGroups = groups.map((g) => g.toLowerCase());
+	if (adminGroups.some((ag) => lowerGroups.includes(ag.toLowerCase()))) return 'admin';
+	if (operatorGroups.some((og) => lowerGroups.includes(og.toLowerCase()))) return 'operator';
+	if (viewerGroups.some((vg) => lowerGroups.includes(vg.toLowerCase()))) return 'viewer';
 
 	// RBAC enabled but user has no matching group — deny access
 	return null;
