@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Plus, ShieldOff, Trash2, Loader2, Copy, Check } from 'lucide-react';
+import type { ReactNode } from 'react';
+import { Plus, ShieldOff, Trash2, Loader2, Copy, Check, ChevronRight, ChevronsDownUp } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -8,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
 import { S3PolicyBuilder } from '@/components/S3PolicyBuilder';
 import { summarizeStatement } from '@/components/ConditionEditor';
 import { usePagination } from '@/hooks/use-pagination';
@@ -278,6 +279,133 @@ function PolicyPreview({ policyJson }: { policyJson: string }) {
 	);
 }
 
+// ─── Detail helpers ─────────────────────────────────────────────────
+
+function formatTimestamp(epoch: number): string {
+	return new Date(epoch).toLocaleString('en-US', {
+		year: 'numeric',
+		month: 'short',
+		day: 'numeric',
+		hour: '2-digit',
+		minute: '2-digit',
+		second: '2-digit',
+		hour12: false,
+	});
+}
+
+function DetailField({ label, children }: { label: string; children: ReactNode }) {
+	return (
+		<div className="contents">
+			<span className="text-[11px] font-data text-muted-foreground/70 select-none">{label}</span>
+			<span className="text-[11px] font-data break-all select-all">{children}</span>
+		</div>
+	);
+}
+
+// ─── Credential Detail Row ──────────────────────────────────────────
+
+function CredentialDetailRow({ credential, colSpan }: { credential: S3Credential; colSpan: number }) {
+	let parsedPolicy: PolicyDocument | null = null;
+	try {
+		parsedPolicy = typeof credential.policy === 'string' ? JSON.parse(credential.policy) : credential.policy;
+	} catch {
+		/* invalid JSON */
+	}
+
+	return (
+		<TableRow className="bg-muted/30 hover:bg-muted/40 border-b border-border/50">
+			<TableCell colSpan={colSpan} className="px-6 py-3">
+				<div className="space-y-4 max-w-4xl">
+					{/* ── Credential metadata ──────────────────────── */}
+					<div className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5">
+						<DetailField label="access_key_id">
+							<span className="text-lv-cyan">{credential.access_key_id}</span>
+						</DetailField>
+						<DetailField label="name">
+							<span className="text-foreground">{credential.name}</span>
+						</DetailField>
+						<DetailField label="status">
+							{credential.revoked ? (
+								<span className="text-lv-red font-semibold">Revoked</span>
+							) : (
+								<span className="text-lv-green font-semibold">Active</span>
+							)}
+						</DetailField>
+						<DetailField label="created_at">
+							<span className="text-lv-blue">{formatTimestamp(credential.created_at)}</span>
+						</DetailField>
+						<DetailField label="expires_at">
+							{credential.expires_at ? (
+								<span className="text-lv-blue">{formatTimestamp(credential.expires_at)}</span>
+							) : (
+								<span className="italic text-muted-foreground/40">never</span>
+							)}
+						</DetailField>
+						<DetailField label="created_by">
+							{credential.created_by ? (
+								<span className="text-lv-cyan">{credential.created_by}</span>
+							) : (
+								<span className="italic text-muted-foreground/40">null</span>
+							)}
+						</DetailField>
+					</div>
+
+					{/* ── Policy ───────────────────────────────────── */}
+					<div>
+						<div className="flex items-center gap-2 mb-2">
+							<span className="text-[11px] font-data text-muted-foreground/50">Policy</span>
+							{parsedPolicy && <span className="text-[11px] font-data text-muted-foreground/40">v{parsedPolicy.version}</span>}
+						</div>
+						{!parsedPolicy || !parsedPolicy.statements || parsedPolicy.statements.length === 0 ? (
+							<span className="text-[11px] font-data text-muted-foreground/70 italic">No policy data</span>
+						) : (
+							<div className="space-y-2">
+								{parsedPolicy.statements.map((stmt, i) => {
+									const prefix = stmt.actions.some((a: string) => a.startsWith('s3:'))
+										? 's3'
+										: stmt.actions.some((a: string) => a.startsWith('purge:'))
+											? 'purge'
+											: 'admin';
+									const summary = summarizeStatement(stmt, prefix);
+									return (
+										<div key={stmt._id ?? i} className="rounded border border-border/50 bg-background/50 px-3 py-2 space-y-1.5">
+											<div className="flex items-center gap-2">
+												<Badge
+													className={cn(
+														'text-[10px] px-1.5 py-0',
+														stmt.effect === 'allow'
+															? 'bg-lv-green/20 text-lv-green border-lv-green/30'
+															: 'bg-lv-red/20 text-lv-red border-lv-red/30',
+													)}
+												>
+													{stmt.effect.toUpperCase()}
+												</Badge>
+												<span className="text-[11px] font-data text-muted-foreground/50">Statement {i + 1}</span>
+											</div>
+											<div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+												<span className="text-[11px] font-data text-muted-foreground/70">actions</span>
+												<span className="text-[11px] font-data text-lv-cyan">{stmt.actions.join(', ')}</span>
+												<span className="text-[11px] font-data text-muted-foreground/70">resources</span>
+												<span className="text-[11px] font-data text-lv-purple">{stmt.resources.join(', ')}</span>
+												{stmt.conditions && stmt.conditions.length > 0 && (
+													<>
+														<span className="text-[11px] font-data text-muted-foreground/70">conditions</span>
+														<span className="text-[11px] font-data text-lv-peach">{summary.replace(/^(Allow|Deny)\s/, '')}</span>
+													</>
+												)}
+											</div>
+										</div>
+									);
+								})}
+							</div>
+						)}
+					</div>
+				</div>
+			</TableCell>
+		</TableRow>
+	);
+}
+
 // ─── S3 Credentials Page ────────────────────────────────────────────
 
 export function S3CredentialsPage() {
@@ -290,6 +418,16 @@ export function S3CredentialsPage() {
 	const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 	const [bulkLoading, setBulkLoading] = useState(false);
 	const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'revoked'>('all');
+	const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+	const toggleExpanded = (id: string) => {
+		setExpandedIds((prev) => {
+			const next = new Set(prev);
+			if (next.has(id)) next.delete(id);
+			else next.add(id);
+			return next;
+		});
+	};
 
 	const fetchCredentials = useCallback(async () => {
 		setLoading(true);
@@ -461,13 +599,27 @@ export function S3CredentialsPage() {
 			{error && <div className="rounded-lg border border-lv-red/30 bg-lv-red/10 px-4 py-3 text-sm text-lv-red">{error}</div>}
 
 			{/* ── Filter tabs ────────────────────────────────────── */}
-			<Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as 'all' | 'active' | 'revoked')}>
-				<TabsList>
-					<TabsTrigger value="all">All ({credentials.length})</TabsTrigger>
-					<TabsTrigger value="active">Active ({activeCount})</TabsTrigger>
-					<TabsTrigger value="revoked">Revoked ({revokedCount})</TabsTrigger>
-				</TabsList>
-			</Tabs>
+			<div className="flex flex-wrap items-center gap-3">
+				<div className="flex rounded-md border border-border">
+					{(['all', 'active', 'revoked'] as const).map((t) => {
+						const count = t === 'all' ? credentials.length : t === 'active' ? activeCount : revokedCount;
+						const labels = { all: 'All', active: 'Active', revoked: 'Revoked' };
+						return (
+							<button
+								key={t}
+								onClick={() => setStatusFilter(t)}
+								className={cn(
+									'px-3 py-1 text-xs font-data transition-colors',
+									statusFilter === t ? 'bg-lv-purple/20 text-lv-purple' : 'text-muted-foreground hover:text-foreground hover:bg-muted',
+									t !== 'all' && 'border-l border-border',
+								)}
+							>
+								{labels[t]} ({count})
+							</button>
+						);
+					})}
+				</div>
+			</div>
 
 			{/* ── Loading ────────────────────────────────────────── */}
 			{loading && <CredentialsTableSkeleton />}
@@ -483,7 +635,21 @@ export function S3CredentialsPage() {
 			{!loading && credentials.length > 0 && (
 				<Card>
 					<CardHeader>
-						<CardTitle className={T.sectionHeading}>Credentials ({credentials.length})</CardTitle>
+						<div className="flex items-center justify-between">
+							<CardTitle className={T.sectionHeading}>Credentials ({credentials.length})</CardTitle>
+							{expandedIds.size > 0 && (
+								<Button
+									variant="ghost"
+									size="xs"
+									className="text-muted-foreground hover:text-foreground"
+									onClick={() => setExpandedIds(new Set())}
+									title="Collapse all expanded rows"
+								>
+									<ChevronsDownUp className="h-3 w-3 mr-1" />
+									Collapse ({expandedIds.size})
+								</Button>
+							)}
+						</div>
 					</CardHeader>
 					<CardContent className="p-0">
 						<Table>
@@ -498,85 +664,101 @@ export function S3CredentialsPage() {
 											aria-label="Select all"
 										/>
 									</TableHead>
+									<TableHead className="w-6 px-2" />
 									<TableHead className={T.sectionLabel}>Name</TableHead>
 									<TableHead className={T.sectionLabel}>Access Key ID</TableHead>
 									<TableHead className={T.sectionLabel}>Status</TableHead>
 									<TableHead className={T.sectionLabel}>Created</TableHead>
 									<TableHead className={T.sectionLabel}>Expires</TableHead>
 									<TableHead className={T.sectionLabel}>Created By</TableHead>
-									<TableHead className={T.sectionLabel}>Policy</TableHead>
 									<TableHead className={cn(T.sectionLabel, 'text-right')}>Actions</TableHead>
 								</TableRow>
 							</TableHeader>
 							<TableBody>
-								{pageItems.map((c) => (
-									<TableRow key={c.access_key_id} className={selectedIds.has(c.access_key_id) ? 'bg-lv-purple/5' : undefined}>
-										<TableCell className="w-8">
-											<input
-												type="checkbox"
-												checked={selectedIds.has(c.access_key_id)}
-												onChange={() => toggleSelect(c.access_key_id)}
-												className="rounded border-border"
-												aria-label="Select row"
-											/>
-										</TableCell>
-										<TableCell className={T.tableRowName}>{c.name}</TableCell>
-										<TableCell>
-											<code className={T.tableCellMono} title={c.access_key_id}>
-												{truncateId(c.access_key_id)}
-											</code>
-										</TableCell>
-										<TableCell>
-											{c.revoked ? (
-												<Badge className="bg-lv-red/20 text-lv-red border-lv-red/30">Revoked</Badge>
-											) : (
-												<Badge className="bg-lv-green/20 text-lv-green border-lv-green/30">Active</Badge>
-											)}
-										</TableCell>
-										<TableCell className={T.tableCell}>{formatDate(c.created_at)}</TableCell>
-										<TableCell className={T.tableCell}>
-											{c.expires_at ? formatDate(c.expires_at) : <span className={T.muted}>Never</span>}
-										</TableCell>
-										<TableCell className={T.tableCell}>{c.created_by ?? <span className={T.muted}>--</span>}</TableCell>
-										<TableCell className="max-w-xs">
-											<PolicyPreview policyJson={c.policy} />
-										</TableCell>
-										<TableCell className="text-right space-x-1">
-											{!c.revoked && (
-												<Button
-													size="xs"
-													variant="ghost"
-													className="text-lv-red hover:text-lv-red-bright hover:bg-lv-red/10"
-													onClick={() => handleRevoke(c.access_key_id)}
-													disabled={revokingId === c.access_key_id}
-												>
-													{revokingId === c.access_key_id ? (
-														<Loader2 className="h-3.5 w-3.5 animate-spin" />
+								{pageItems.map((c) => {
+									const isExpanded = expandedIds.has(c.access_key_id);
+									return (
+										<>
+											<TableRow
+												key={c.access_key_id}
+												className={cn(
+													'cursor-pointer select-none',
+													selectedIds.has(c.access_key_id) && 'bg-lv-purple/5',
+													isExpanded && 'bg-muted/30',
+												)}
+												onClick={() => toggleExpanded(c.access_key_id)}
+											>
+												<TableCell className="w-8" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+													<input
+														type="checkbox"
+														checked={selectedIds.has(c.access_key_id)}
+														onChange={() => toggleSelect(c.access_key_id)}
+														className="rounded border-border"
+														aria-label="Select row"
+													/>
+												</TableCell>
+												<TableCell className="w-6 px-2">
+													<ChevronRight
+														className={cn('h-3.5 w-3.5 text-muted-foreground transition-transform duration-150', isExpanded && 'rotate-90')}
+													/>
+												</TableCell>
+												<TableCell className={T.tableRowName}>{c.name}</TableCell>
+												<TableCell>
+													<code className={T.tableCellMono} title={c.access_key_id}>
+														{truncateId(c.access_key_id)}
+													</code>
+												</TableCell>
+												<TableCell>
+													{c.revoked ? (
+														<Badge className="bg-lv-red/20 text-lv-red border-lv-red/30">Revoked</Badge>
 													) : (
-														<ShieldOff className="h-3.5 w-3.5" />
+														<Badge className="bg-lv-green/20 text-lv-green border-lv-green/30">Active</Badge>
 													)}
-													Revoke
-												</Button>
-											)}
-											{!!c.revoked && (
-												<Button
-													size="xs"
-													variant="ghost"
-													className="text-muted-foreground hover:text-lv-red hover:bg-lv-red/10"
-													onClick={() => handleDelete(c.access_key_id)}
-													disabled={deletingId === c.access_key_id}
-												>
-													{deletingId === c.access_key_id ? (
-														<Loader2 className="h-3.5 w-3.5 animate-spin" />
-													) : (
-														<Trash2 className="h-3.5 w-3.5" />
+												</TableCell>
+												<TableCell className={T.tableCell}>{formatDate(c.created_at)}</TableCell>
+												<TableCell className={T.tableCell}>
+													{c.expires_at ? formatDate(c.expires_at) : <span className={T.muted}>Never</span>}
+												</TableCell>
+												<TableCell className={T.tableCell}>{c.created_by ?? <span className={T.muted}>--</span>}</TableCell>
+												<TableCell className="text-right space-x-1" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+													{!c.revoked && (
+														<Button
+															size="xs"
+															variant="ghost"
+															className="text-lv-red hover:text-lv-red-bright hover:bg-lv-red/10"
+															onClick={() => handleRevoke(c.access_key_id)}
+															disabled={revokingId === c.access_key_id}
+														>
+															{revokingId === c.access_key_id ? (
+																<Loader2 className="h-3.5 w-3.5 animate-spin" />
+															) : (
+																<ShieldOff className="h-3.5 w-3.5" />
+															)}
+															Revoke
+														</Button>
 													)}
-													Delete
-												</Button>
-											)}
-										</TableCell>
-									</TableRow>
-								))}
+													{!!c.revoked && (
+														<Button
+															size="xs"
+															variant="ghost"
+															className="text-muted-foreground hover:text-lv-red hover:bg-lv-red/10"
+															onClick={() => handleDelete(c.access_key_id)}
+															disabled={deletingId === c.access_key_id}
+														>
+															{deletingId === c.access_key_id ? (
+																<Loader2 className="h-3.5 w-3.5 animate-spin" />
+															) : (
+																<Trash2 className="h-3.5 w-3.5" />
+															)}
+															Delete
+														</Button>
+													)}
+												</TableCell>
+											</TableRow>
+											{isExpanded && <CredentialDetailRow key={`${c.access_key_id}-detail`} credential={c} colSpan={9} />}
+										</>
+									);
+								})}
 							</TableBody>
 						</Table>
 						<TablePagination

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { ChevronRight, Clock, Copy, Download, Search, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { ChevronRight, ChevronsDownUp, Clock, Copy, Download, Search, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -327,14 +327,28 @@ export function AnalyticsPage() {
 				{!loading && filteredEvents.length > 0 && (
 					<Card>
 						<CardHeader>
-							<CardTitle className={T.sectionHeading}>
-								<div className="flex items-center gap-2">
-									<Clock className="h-4 w-4 text-muted-foreground" />
-									Events ({filteredEvents.length}
-									{filteredEvents.length !== totalCount ? ` of ${totalCount}` : ''}
-									{flightGroups.length !== filteredEvents.length ? ` · ${flightGroups.length} flights` : ''})
-								</div>
-							</CardTitle>
+							<div className="flex items-center justify-between">
+								<CardTitle className={T.sectionHeading}>
+									<div className="flex items-center gap-2">
+										<Clock className="h-4 w-4 text-muted-foreground" />
+										Events ({filteredEvents.length}
+										{filteredEvents.length !== totalCount ? ` of ${totalCount}` : ''}
+										{flightGroups.length !== filteredEvents.length ? ` · ${flightGroups.length} flights` : ''})
+									</div>
+								</CardTitle>
+								{expandedIds.size > 0 && (
+									<Button
+										variant="ghost"
+										size="xs"
+										className="text-muted-foreground hover:text-foreground"
+										onClick={() => setExpandedIds(new Set())}
+										title="Collapse all expanded rows"
+									>
+										<ChevronsDownUp className="h-3 w-3 mr-1" />
+										Collapse ({expandedIds.size})
+									</Button>
+								)}
+							</div>
 						</CardHeader>
 						<CardContent className="p-0">
 							<Table>

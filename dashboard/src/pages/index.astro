@@ -134,13 +134,40 @@
         <div class="progress-fill"></div>
       </div>
 
-      <div class="subtitle">
-        <a href="/dashboard/">Open dashboard</a>
-      </div>
+      <div class="subtitle" id="quip"></div>
+
+      <noscript>
+        <div class="subtitle">
+          <a href="/dashboard/">Continue to dashboard</a>
+        </div>
+      </noscript>
     </div>
 
     <script is:inline>
-      // Redirect after the progress animation completes
+      var quips = [
+        'You shall not pass... without valid credentials.',         // LotR — used in auth guards everywhere
+        'sudo make me a sandwich.',                                 // xkcd #149
+        'correct horse battery staple.',                            // xkcd #936
+        'All your base are belong to us.',                          // Zero Wing
+        "There's no place like 127.0.0.1.",                         // Classic sysadmin
+        'Follow the white rabbit.',                                 // The Matrix
+        "I'm in.",                                                  // Every hacker movie ever
+        'Trust, but verify.',                                       // Zero Trust doctrine
+        'It works on my machine.',                                  // Universal dev truth
+        'Have you tried turning it off and on again?',              // IT Crowd
+        'Authorization: Bearer of good news.',                      // HTTP header pun
+        'There are only 10 types of people in the world.',          // Binary joke
+        'The cloud is just someone else\u2019s computer.',          // Infosec proverb
+        '// TODO: fix this later.',                                 // Found in every codebase
+        'rm -rf / for free WiFi.',                                  // Hak5 SSID payloads
+        'SELECT * FROM users WHERE clue > 0; -- 0 rows returned.', // SQL humor
+        'Roses are #FF0000, violets are #0000FF.',                  // Programmer poetry
+        'Works as designed. Not as expected.',                       // QA proverb
+        'The S in IoT stands for Security.',                        // Infosec truism
+        'HTTP 418: I\u2019m a teapot.',                             // RFC 2324
+        'It\u2019s not DNS. There\u2019s no way it\u2019s DNS. It was DNS.', // Every sysadmin ever
+      ];
+      document.getElementById('quip').textContent = quips[Math.floor(Math.random() * quips.length)];
       setTimeout(function () { window.location.href = '/dashboard/'; }, 1700);
     </script>
   </body>

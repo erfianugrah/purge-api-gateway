@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Plus, ShieldOff, Trash2, Loader2, Search, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight } from 'lucide-react';
+import { Plus, ShieldOff, Trash2, Loader2, Search, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, ChevronsDownUp } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -673,10 +673,24 @@ export function KeysPage() {
 			{!loading && keys.length > 0 && (
 				<Card>
 					<CardHeader>
-						<CardTitle className={T.sectionHeading}>
-							API Keys ({filteredKeys.length}
-							{filteredKeys.length !== keys.length ? ` of ${keys.length}` : ''})
-						</CardTitle>
+						<div className="flex items-center justify-between">
+							<CardTitle className={T.sectionHeading}>
+								API Keys ({filteredKeys.length}
+								{filteredKeys.length !== keys.length ? ` of ${keys.length}` : ''})
+							</CardTitle>
+							{expandedIds.size > 0 && (
+								<Button
+									variant="ghost"
+									size="xs"
+									className="text-muted-foreground hover:text-foreground"
+									onClick={() => setExpandedIds(new Set())}
+									title="Collapse all expanded rows"
+								>
+									<ChevronsDownUp className="h-3 w-3 mr-1" />
+									Collapse ({expandedIds.size})
+								</Button>
+							)}
+						</div>
 					</CardHeader>
 					<CardContent className="p-0">
 						{filteredKeys.length === 0 ? (
